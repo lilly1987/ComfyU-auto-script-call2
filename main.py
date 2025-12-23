@@ -319,9 +319,6 @@ class ComfyUIAutomation:
         named_files = [
             ('setupWildcard', 'setupWildcard.yml'),
             ('setupWorkflow', 'setupWorkflow.yml'),
-            # ('WeightChar', 'WeightChar.yml'),
-            ('WeightCheckpoint', 'WeightCheckpoint.yml'),
-            # ('WeightLora', 'WeightLora.yml'),
         ]
 
         for type_name in checkpoint_types.keys():
@@ -438,7 +435,7 @@ class ComfyUIAutomation:
                     'setupWildcard': 'setupWildcard',
                     'setupWorkflow': 'setupWorkflow',
                     # 'WeightChar': 'WeightChar',
-                    'WeightCheckpoint': 'WeightCheckpoint',
+                    # 'WeightCheckpoint': 'WeightCheckpoint',
                     # 'WeightLora': 'WeightLora',
                 }
                 if file_name in named_file_map:
@@ -558,7 +555,7 @@ class ComfyUIAutomation:
         단 모든 파일을 한번식 사용하고 다 한번식 사용하면 다시 반복.
 
         '''
-        self.logger.info(f"🔄 CheckpointLoop 시작")
+        # self.logger.info(f"🔄 CheckpointLoop 시작")
         
         try:
             get_checkpoint_kind = self.main_config.get('GetCheckpointKind', {})
@@ -578,10 +575,9 @@ class ComfyUIAutomation:
             
             type_data = self.data.get(self.selected_type.lower(), {})
             checkpoint_yml = type_data.get('checkpoint', {})
-            weight_checkpoint_yml = type_data.get('WeightCheckpoint', {})
 
             if self.selected_kind_Checkpoint.lower() == 'weight':
-                checkpoint_weight_per = self.main_config.get('CheckpointWeightPer', 0.75)
+                # Weight*.yml 파일을 사용하지 않음 — checkpoint yml 내부의 weight 필드만 사용
                 merged_weights = {}
                 for yml_name, yml_data in checkpoint_yml.items():
                     if isinstance(yml_data, dict):
@@ -589,11 +585,6 @@ class ComfyUIAutomation:
                             if isinstance(val, dict):
                                 weight = val.get('weight', self.main_config.get('CheckpointWeightDefault', 150))
                                 merged_weights[key] = merged_weights.get(key, 0) + weight
-
-                if random.random() < checkpoint_weight_per and weight_checkpoint_yml:
-                    for key, weight in weight_checkpoint_yml.items():
-                        if isinstance(weight, (int, float)):
-                            merged_weights[key] = merged_weights.get(key, 0) + weight
 
                 if merged_weights:
                     checkpoint_names = list(merged_weights.keys())
@@ -698,7 +689,7 @@ class ComfyUIAutomation:
                         self.logger.info(f"✅ Checkpoint 선택 (Cycle): {selected_checkpoint}")
                 else:
                     self.logger.info("Checkpoint Cycle: 후보가 없습니다")
-            self.logger.info(self.selected_Checkpoint)
+            # self.logger.info(self.selected_Checkpoint)
         except Exception as e:
             self.logger.error(f"Checkpoint 설정 중 오류: {e}")
 
@@ -727,7 +718,7 @@ class ComfyUIAutomation:
         LoraCycleCnt 만큼 선택.
 
         '''
-        self.logger.info(f"👤 CharLoop 시작")
+        # self.logger.info(f"👤 CharLoop 시작")
         
         try:
             get_char_kind = self.main_config.get('GetCharKind', {})
@@ -748,9 +739,8 @@ class ComfyUIAutomation:
             type_data = self.data.get(self.selected_type.lower(), {})
             
             if selected_kind.lower() == 'weight':
-                char_weight_per = self.main_config.get('CharWeightPer', 0.75)
+                # WeightChar.yml 파일을 사용하지 않음 — lora yml 내부의 weight 필드만 사용
                 lora_yml = type_data.get('lora', {})
-                weight_char_yml = type_data.get('WeightChar', {})
                 # 실제 LoraPath의 char 서브폴더에 존재하는 모델만 후보로 삼기
                 char_folder = str(self.main_config.get('LoraCharPath', 'char')).lower()
                 try:
@@ -767,11 +757,6 @@ class ComfyUIAutomation:
                             if isinstance(val, dict):
                                 weight = val.get('weight', self.main_config.get('CharWeightDefault', 100))
                                 merged_weights[key] = merged_weights.get(key, 0) + weight
-
-                if random.random() < char_weight_per and weight_char_yml:
-                    for key, weight in weight_char_yml.items():
-                        if isinstance(weight, (int, float)) and key in valid_char_keys:
-                            merged_weights[key] = merged_weights.get(key, 0) + weight
 
                 if merged_weights:
                     char_names = list(merged_weights.keys())
@@ -908,8 +893,7 @@ class ComfyUIAutomation:
                 else:
                     self.logger.info(f"Char Cycle: 후보 없음")
 
-
-            self.logger.info(self.selected_char)
+            # self.logger.info(self.selected_char)
         except Exception as e:
             self.logger.error(f"Char 설정 중 오류: {e}")
 
@@ -941,7 +925,7 @@ class ComfyUIAutomation:
         LoraWeightCnt 만큼 선택.
 
         '''
-        self.logger.info(f"📋 QueueLoop 시작")
+        # self.logger.info(f"📋 QueueLoop 시작")
         
         try:
             get_lora_kind = self.main_config.get('GetLoraKind', {})
@@ -962,27 +946,36 @@ class ComfyUIAutomation:
             type_data = self.data.get(self.selected_type.lower(), {})
             
             if selected_kind.lower() == 'weight':
-                weight_lora_yml = type_data.get('WeightLora', {})
-                if weight_lora_yml:
-                    etc_folder = str(self.main_config.get('LoraEtcPath', 'etc')).lower()
-                    try:
-                        valid_etc_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).keys())
-                    except Exception:
-                        valid_etc_keys = set()
+                # WeightLora.yml 파일을 사용하지 않음 — lora yml 내부의 weight 필드만 사용
+                etc_folder = str(self.main_config.get('LoraEtcPath', 'etc')).lower()
+                lora_yml = type_data.get('lora', {})
 
-                    lora_names = [k for k in list(weight_lora_yml.keys()) if k in valid_etc_keys]
-                    if lora_names:
-                        lora_weights = [float(weight_lora_yml.get(k, 1.0) or 1.0) for k in lora_names]
-                        lora_cnt = random_int_or_value(self.main_config.get('LoraWeightCnt', [1, 1]))
-                        selected_loras = random.choices(lora_names, weights=lora_weights, k=min(lora_cnt, len(lora_names)))
-                        mapped = {}
-                        for l in selected_loras:
-                            path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l)
-                            mapped[l] = path
-                        self.selected_loras = mapped
-                        self.logger.info(f"✅ Lora 선택 (Weight): {selected_loras}")
-                    else:
-                        self.logger.info("Lora 선택(Weight): 후보 없음")
+                # 후보는 etc 폴더에 실제로 존재하는 키만
+                try:
+                    valid_etc_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).keys())
+                except Exception:
+                    valid_etc_keys = set()
+
+                merged_weights = {}
+                for yml_name, yml_data in lora_yml.items():
+                    if isinstance(yml_data, dict):
+                        for key, val in yml_data.items():
+                            if key not in valid_etc_keys:
+                                continue
+                            if isinstance(val, dict):
+                                w = val.get('weight', 1)
+                            else:
+                                w = 1
+                            merged_weights[key] = merged_weights.get(key, 0) + (float(w) if isinstance(w, (int, float)) else 1.0)
+
+                if merged_weights:
+                    lora_names = list(merged_weights.keys())
+                    lora_weights = list(merged_weights.values())
+                    lora_cnt = random_int_or_value(self.main_config.get('LoraWeightCnt', [1, 1]))
+                    selected_loras = random.choices(lora_names, weights=lora_weights, k=min(lora_cnt, len(lora_names)))
+                    mapped = {l: self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l) for l in selected_loras}
+                    self.selected_loras = mapped
+                    self.logger.info(f"✅ Lora 선택 (Weight): {selected_loras}")
                 elif selected_kind.lower() == 'db':
                     # TinyDB의 lora 테이블을 사용하여 사용횟수 기반 가중치로 다중 선택
                     try:
@@ -1116,7 +1109,7 @@ class ComfyUIAutomation:
                         self.logger.info(f"✅ Lora 선택 (Cycle): {selected_loras}")
                 else:
                     self.logger.info("Lora Cycle: 후보 없음")
-            self.logger.info(self.selected_loras)
+            # self.logger.info(self.selected_loras)
         except Exception as e:
             self.logger.error(f"Lora 설정 중 오류: {e}")
 
@@ -1257,7 +1250,7 @@ class ComfyUIAutomation:
             except Exception:
                 pass
 
-            self.logger.info(f"DB 저장 완료: {os.path.abspath(db_path)}")
+            # self.logger.info(f"DB 저장 완료: {os.path.abspath(db_path)}")
         except Exception as e:
             self.logger.error(f"db_save 처리 중 오류: {e}")
 
@@ -1340,6 +1333,8 @@ class ComfyUIAutomation:
                 stop_batch = False
                 last_ck_idx = -1  # 마지막 checkpoint 인덱스 추적
                 last_ch_idx = -1  # 마지막 char 인덱스 추적
+                
+                self.set_checkpoint()
 
                 for idx in range(total_iters):
                     # 인덱스를 원래의 중첩 구조 인덱스로 복원
@@ -1370,7 +1365,7 @@ class ComfyUIAutomation:
 
                     # CheckpointLoop 새로 시작할 때
                     if ck_idx != last_ck_idx:
-                        self.set_checkpoint()
+                        self.set_char()
                         last_ck_idx = ck_idx
 
                     # char 또는 queue 범위가 바뀌었으면 해당 조합은 건너뜀
@@ -1379,8 +1374,8 @@ class ComfyUIAutomation:
                         continue
 
                     # CharLoop 새로 시작할 때
-                    if ch_idx != last_ch_idx:
-                        self.set_char()
+                    if ch_idx != last_ch_idx:                        
+                        self.set_lora()
                         last_ch_idx = ch_idx
 
                     if cfg_q_max and (q_idx + 1) > cfg_q_max:
@@ -1388,7 +1383,7 @@ class ComfyUIAutomation:
                         continue
 
                     # QueueLoop 시작 (매번 호출)
-                    self.set_lora()
+                    
 
                     self.db_save()
                     
