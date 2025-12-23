@@ -852,58 +852,87 @@ class ComfyUIAutomation:
             db = TinyDB(db_path)
             Q = Query()
 
-            def _inc_key(key):
+            # 각 테이블 생성
+            t_checkpoint = db.table('checkpoint')
+            t_char = db.table('char')
+            t_lora = db.table('lora')
+
+            def _inc_table_key(table, key):
                 if not key:
                     return
                 try:
-                    results = db.search(Q.key == key)
-                    if results:
-                        current = results[0].get('count', 0)
-                        db.update({'count': current + 1}, Q.key == key)
+                    res = table.search(Q.key == key)
+                    if res:
+                        current = res[0].get('count', 0)
+                        table.update({'count': current + 1}, Q.key == key)
                     else:
-                        db.insert({'key': key, 'count': 1})
+                        table.insert({'key': key, 'count': 1})
                 except Exception as e:
                     self.logger.warning(f"DB 증가 실패({key}): {e}")
 
-            def _collect_keys(obj):
+            def _extract_keys_simple(obj):
+                # 선택값에서 문자열 키들을 뽑아 리스트로 반환
                 keys = []
                 if obj is None:
                     return keys
                 if isinstance(obj, dict):
-                    # simple mapping {name: name} or nested dicts
                     for k, v in obj.items():
+                        # 우선 키 자체를 저장
+                        if isinstance(k, str):
+                            keys.append(k)
+                        # 값이 dict이면 내부 키도 추가
                         if isinstance(v, dict):
-                            keys.append(k)
-                            for sk in v.keys():
-                                keys.append(f"{k}:{sk}")
-                        else:
-                            keys.append(k)
+                            for kk in v.keys():
+                                if isinstance(kk, str):
+                                    keys.append(kk)
+                        # 값이 문자열이면 추가
+                        if isinstance(v, str):
+                            keys.append(v)
                 elif isinstance(obj, (list, tuple)):
                     for it in obj:
-                        keys.extend(_collect_keys(it))
+                        keys.extend(_extract_keys_simple(it))
                 elif isinstance(obj, str):
                     keys.append(obj)
                 return keys
 
-            keys = []
-            keys.extend(_collect_keys(self.selected_Checkpoint))
-            keys.extend(_collect_keys(self.selected_char))
-            keys.extend(_collect_keys(self.selected_loras))
+            # 체크포인트, char, lora 별로 키 수집
+            cp_keys = _extract_keys_simple(self.selected_Checkpoint)
+            ch_keys = _extract_keys_simple(self.selected_char)
+            lo_keys = _extract_keys_simple(self.selected_loras)
 
-            for k in keys:
-                _inc_key(k)
+            for k in cp_keys:
+                _inc_table_key(t_checkpoint, k)
+            for k in ch_keys:
+                _inc_table_key(t_char, k)
+            for k in lo_keys:
+                _inc_table_key(t_lora, k)
 
-            # 엑셀로도 저장
+            # 엑셀: 각 테이블을 별도 시트로 저장, count 내림차순 정렬
             if pd is not None:
                 try:
-                    records = db.all()
-                    df = pd.DataFrame(records)
                     excel_path = os.path.join(self.script_dir, 'count.xlsx')
-                    df.to_excel(excel_path, index=False)
+                    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+                        for name, table in (('checkpoint', t_checkpoint), ('char', t_char), ('lora', t_lora)):
+                            try:
+                                records = table.all()
+                                if records:
+                                    df = pd.DataFrame(records)
+                                    if 'count' in df.columns:
+                                        df = df.sort_values(by='count', ascending=False)
+                                    df.to_excel(writer, sheet_name=name, index=False)
+                                else:
+                                    # 빈 시트 생성
+                                    pd.DataFrame(columns=['key', 'count']).to_excel(writer, sheet_name=name, index=False)
+                            except Exception as e:
+                                self.logger.warning(f"시트 저장 실패({name}): {e}")
                 except Exception as e:
                     self.logger.warning(f"엑셀 저장 실패: {e}")
 
-            db.close()
+            try:
+                db.close()
+            except Exception:
+                pass
+
             self.logger.info(f"DB 저장 완료: {os.path.abspath(db_path)}")
         except Exception as e:
             self.logger.error(f"db_save 처리 중 오류: {e}")
