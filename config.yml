@@ -1,0 +1,145 @@
+# --- 경로 설정 ---
+dataPath: ../ComfyU-auto-script_data  # 설정파일 폴더. 변경시 재실행 필요.
+baseDir: W:\ComfyUI_windows_portable  # 작업 디렉토리
+
+# --- 처리할 타입 리스트 ---
+CheckpointTypes: # Checkpoint 및 Lora 종류. 뒤의 숫자는 사용할 가중치. 키 추가시 재실행 필요. 가중치는 실시간 반영
+  IL: 10
+  # Pony: 1
+
+# --- 경로 설정 ---
+CheckpointPath: ../ComfyUI/models/checkpoints # Checkpoint 폴더. 변경시 재실행 필요.
+LoraPath: ../ComfyUI/models/loras # Lora 폴더. 변경시 재실행 필요.
+LoraEtcPath: etc # LoraPath / etc 폴더. 변경시 재실행 필요. 하위폴더는 인식 안함.
+LoraCharPath: char # LoraPath 안의 char 폴더. 변경시 재실행 필요. 하위폴더는 인식 안함.
+extension: ['safetensors'] # Checkpoint 및 Lora 파일 확장자.
+workflow_api: workflow_api.json # ComfyUI 로 보낼 workflow api 파일. dataPath+CheckpointTypes에 넣음
+url: http://127.0.0.1:8188/prompt # ComfyUI 로 보낼 url. ComfyUI가 실행중이어야 함
+
+# safetensorsStart: 'IL\bluearchive_01.safetensors'
+
+# --- 반복 설정 ---
+# CheckpointLoop * CharLoop * QueueLoop 횟수만큼 무한 반복
+CheckpointLoop: [5, 5] # Checkpoint 반복 횟수. 한번 돌때마다 Char 값이 바뀜
+CharLoop: [3, 3] # Char 반복 횟수. 한번 돌때마다 Lora 값이 바뀜
+queueLoop: [3, 3] # Queue 반복 횟수
+
+# --- Checkpoint 적용 설정 ---
+GetCheckpointKind:
+    DB: 1
+    Weight: 6 # {type}/Checkpoint/*.yml , {type}/WeightChar.yml 순으로 찿아서 참조
+    Random: 1 # 파일 목록중에서 랜덤 선택
+    Cycle: 1
+
+CheckpointDbWeightMax: 100 # GetCharKind 에서 DB일 경우 최대 가중치
+CheckpointDbWeightMin: 1 # GetCharKind 에서 DB일 경우 최소 가중치
+
+# --- char 적용 설정 ---
+GetCharKind:
+    Wildcard: 1
+    DB: 1
+    Weight: 4 # {type}/lora/*.yml , {type}/WeightChar.yml 순으로 찿아서 참조
+    Random: 1 # 파일 목록중에서 랜덤 선택
+    Cycle: 1
+    Skip: 4
+
+CharDbWeightMax: 100 # GetCharKind 에서 DB일 경우 최대 가중치
+CharDbWeightMin: 1 # GetCharKind 에서 DB일 경우 최소 가중치
+
+CharWildcard: # Char 파일을 안쓸 경우 Wildcard 설정
+  positive:
+    char: '/**/__char__,/**/'
+  negative:
+    char: ''
+
+# --- Lora 적용 설정 ---
+GetLoraKind:
+    Wildcard: 1
+    DB: 1
+    Weight: 4 # WeightLora.yml 참조
+    Random: 1 # 파일 목록중에서 랜덤 선택
+    Cycle: 1
+
+LoraWildcard: # GetLoraKind 에서 Wildcard 경우
+  positive:
+    Wildcard: '/**/__action__,/**/'
+  negative:
+    Wildcard: ''
+
+# LoraWildcardEtc: # DB Random Cycle
+  # positive:
+    # Wildcard: '/**/__action__,/**/'
+  # negative:
+    # Wildcard: ''
+
+LoraDbWeightMax: 100 # GetLoraKind 에서 DB일 경우 최대 가중치
+LoraDbWeightMin: 1 # GetLoraKind 에서 DB일 경우 최소 가중치
+LoraDbCnt: [1,2] # GetLoraKind 에서 DB일 경우 DatabaseHandler에서 가져가 쓸 갯수
+
+LoraRandomCnt: [1,2] # GetLoraKind 에서 Random일 경우 목록에서 가져가 쓸 갯수
+
+LoraCycleCnt: [1,2] # GetLoraKind 에서 DB일 경우 DatabaseHandler에서 가져가 쓸 갯수
+
+# --- Weight 설정 ---
+CheckpointWeightPer: 0.75 # WeightCheckpoint.yml 파일을 쓸 확률
+CharWeightPer: 0.75 # char weight를 쓸 확률. 가중치는 WeightChar.yml 파일과 [dataPath]/[CheckpointType]\lora\*.yml파일의 weight 값을 씀
+CharWeightDefault: 100 # [dataPath]/[CheckpointType]/lora/*.Yml 에 weight 값이 없을 경우 기본값.
+CheckpointWeightDefault: 150 # [dataPath]/[CheckpointType]/checkpoint/*.Yml 에 weight 값이 없을 경우 기본값.
+
+# --- 랜덤 설정 ---
+shuffleWildcard: # Wildcard를 섞을 여부. shuffleWildcardPrint이 True일 경우 섞기 전과 후를 출력함
+  true: 1
+  false: 1
+
+# --- 이미지 저장 설정 ---
+noSaveImage1: true # SaveImage1 노드의 images 입력을 제거할지 여부
+
+# --- 콘솔 출력 설정 ---
+checkpointYmlPrint: false # [dataPath]/[CheckpointType]/Checkpoint/*.Yml 를 가져온 값 출력 여부
+loraYmlPrint: false # [dataPath]/[CheckpointType]/lora/*.Yml 를 가져온 값 출력 여부
+setupWorkflowPrint: false # [dataPath]/[CheckpointType]/setupWorkflow.yml 출력 여부
+setupWildcardPrint: false # [dataPath]/[CheckpointType]/setupWildcard.yml 출력 여부
+LoraChangeWarnPrint: false # LoraChange 과정중 경고 출력 여부
+LoraChangePrint: false # LoraChange 과정중 와일드카드 관련 출력 여부
+WorkflowPrint: false # ComfyUI로 보낼기 직전 workflow_api 출력 여부
+shuffleWildcardPrint: false # shuffle Wildcard 전후 출력 여부
+setTivePrint: false # SetTive 처리 과정 출력 여부
+setWildcardDicPrint: false # 와일드 카드 관련 최종 처리 과정 출력 여부
+setWildcardTivePrint: false # 와일드 카드 관련 최종 처리 과정 출력 여부
+setWildcardPrint: false # 와일드 카드 관련 최종 처리 과정 출력 여부
+CallbackPrint: false # 실시간 파일 변경시 로그 출력
+
+# --- SetSetupWorkflowToWorkflowApi 설정 ---
+# workflow_api에 setupWorkflow.yml의 내용을 넣을때 제외할 노드
+excludeNode: 
+  - CheckpointLoaderSimple
+  - KSampler
+  - CLIPTextEncodeP
+  - CLIPTextEncodeN
+  - VAEDecode
+  - SaveImage1
+  - SaveImage2
+  - positiveWildcard
+  - negativeWildcard
+  - PreviewImage24
+  - PreviewImage25
+  - PreviewImage26
+
+# --- 수정 여부 확인 ---
+수정 안해서 작동 안시킴: false # 수정 했으면 이 라인은 지우거나 False로 변경하세요. True로 되어 있으면 작동 안함
+
+# --- sleep 설정 ---
+sleep: [1, 1] # 루프 간 대기 시간 (초)
+
+# --- queue 설정 ---
+queue_prompt: true # ComfyUI에 프롬프트 전송 여부
+queue_prompt_wait: true # 큐 대기 여부
+
+
+# positivePrint: true # tivePrint 출력 여부
+# tivePrint: true # tivePrint 출력 여부
+# WorkflowPrint: true # ComfyUI로 보낼기 직전 workflow_api 출력 여부
+# sleep: 11 # 루프 간 대기 시간 (초)
+# queue_prompt: false # ComfyUI에 프롬프트 전송 여부
+
+test: true
