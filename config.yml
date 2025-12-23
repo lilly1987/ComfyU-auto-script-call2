@@ -27,7 +27,7 @@ QueueLoop: [3, 3] # Queue 반복 횟수
 # --- Checkpoint 적용 설정 ---
 GetCheckpointKind:
     DB: 1
-    Weight: 6 # {type}/Checkpoint/*.yml , {type}/WeightChar.yml 순으로 찿아서 참조
+    Weight: 4 # {type}/Checkpoint/*.yml , {type}/WeightChar.yml 순으로 찿아서 참조
     Random: 1 # 파일 목록중에서 랜덤 선택
     Cycle: 1
 
@@ -36,12 +36,12 @@ CheckpointDbWeightMin: 1 # GetCharKind 에서 DB일 경우 최소 가중치
 
 # --- char 적용 설정 ---
 GetCharKind:
-    Wildcard: 1
+    # Wildcard: 1
     DB: 1
     Weight: 4 # {type}/lora/*.yml , {type}/WeightChar.yml 순으로 찿아서 참조
     Random: 1 # 파일 목록중에서 랜덤 선택
     Cycle: 1
-    Skip: 4
+    # Skip: 4
 
 CharDbWeightMax: 100 # GetCharKind 에서 DB일 경우 최대 가중치
 CharDbWeightMin: 1 # GetCharKind 에서 DB일 경우 최소 가중치
@@ -54,7 +54,7 @@ CharWildcard: # Char 파일을 안쓸 경우 Wildcard 설정
 
 # --- Lora 적용 설정 ---
 GetLoraKind:
-    Wildcard: 1
+    # Wildcard: 1
     DB: 1
     Weight: 4 # WeightLora.yml 참조
     Random: 1 # 파일 목록중에서 랜덤 선택
@@ -72,6 +72,7 @@ LoraWildcard: # GetLoraKind 에서 Wildcard 경우
   # negative:
     # Wildcard: ''
 
+LoraDbWeight: 50 # GetLoraKind 에서 DB일 경우 최대 가중치
 LoraDbWeightMax: 100 # GetLoraKind 에서 DB일 경우 최대 가중치
 LoraDbWeightMin: 1 # GetLoraKind 에서 DB일 경우 최소 가중치
 LoraDbCnt: [1,2] # GetLoraKind 에서 DB일 경우 DatabaseHandler에서 가져가 쓸 갯수
@@ -79,6 +80,8 @@ LoraDbCnt: [1,2] # GetLoraKind 에서 DB일 경우 DatabaseHandler에서 가져�
 LoraRandomCnt: [1,2] # GetLoraKind 에서 Random일 경우 목록에서 가져가 쓸 갯수
 
 LoraCycleCnt: [1,2] # GetLoraKind 에서 DB일 경우 DatabaseHandler에서 가져가 쓸 갯수
+
+LoraWeightCnt: [1,2] # GetLoraKind 에서 DB일 경우 DatabaseHandler에서 가져가 쓸 갯수
 
 # --- Weight 설정 ---
 CheckpointWeightPer: 0.75 # WeightCheckpoint.yml 파일을 쓸 확률

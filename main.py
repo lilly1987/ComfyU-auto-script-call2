@@ -101,7 +101,7 @@ class ComfyUIAutomation:
         
         try:
             self.main_config = load_config(config_path)
-            self.logger.info(f"설정 파일 로드 완료: {config_path}")
+            # self.logger.info(f"설정 파일 로드 완료: {config_path}")
             return self.main_config
         except FileNotFoundError as e:
             self.logger.error(f"오류: {e}")
@@ -542,11 +542,8 @@ class ComfyUIAutomation:
         '''
         self.main_config 의 GetCheckpointKind 의 값을 가중치 기반으로 랜덤 선택하여 반환
         
-        Weight: 
-        {self.selected_type}/Checkpoint/*.yml , 
-        {self.selected_type}/WeightCheckpoint.yml 
-        순으로 찿아서 참조(self.data 활용하기).
-        키의 Weight값을 가중치로 사용.
+        Weight:
+        {self.selected_type}/Checkpoint/*.yml 파일의 각 키마다 Weight값을 가중치로 사용.
         그중에서 랜덤으로 하나 선택하여 self.selected_Checkpoint에 { 키값:파일전체경로} 저장.
 
         DB: 
@@ -581,29 +578,7 @@ class ComfyUIAutomation:
             type_data = self.data.get(self.selected_type.lower(), {})
             
             if self.selected_kind_Checkpoint.lower() == 'weight':
-                checkpoint_weight_per = self.main_config.get('CheckpointWeightPer', 0.75)
-                checkpoint_yml = type_data.get('checkpoint', {})
-                weight_checkpoint_yml = type_data.get('WeightCheckpoint', {})
-                
-                merged_weights = {}
-                for yml_name, yml_data in checkpoint_yml.items():
-                    if isinstance(yml_data, dict):
-                        for key, val in yml_data.items():
-                            if isinstance(val, dict):
-                                weight = val.get('weight', self.main_config.get('CheckpointWeightDefault', 150))
-                                merged_weights[key] = merged_weights.get(key, 0) + weight
-                
-                if random.random() < checkpoint_weight_per and weight_checkpoint_yml:
-                    for key, weight in weight_checkpoint_yml.items():
-                        if isinstance(weight, (int, float)):
-                            merged_weights[key] = merged_weights.get(key, 0) + weight
-                
-                if merged_weights:
-                    checkpoint_names = list(merged_weights.keys())
-                    checkpoint_weights = list(merged_weights.values())
-                    selected_checkpoint = random.choices(checkpoint_names, weights=checkpoint_weights, k=1)[0]
-                    self.selected_Checkpoint = {selected_checkpoint: selected_checkpoint}
-                    self.logger.info(f"✅ Checkpoint 선택 (Weight): {selected_checkpoint}")
+                pass
             
             elif self.selected_kind_Checkpoint.lower() == 'random':
                 checkpoint_yml = type_data.get('checkpoint', {})
@@ -614,7 +589,8 @@ class ComfyUIAutomation:
                 
                 if all_checkpoints:
                     selected_checkpoint = random.choice(all_checkpoints)
-                    self.selected_Checkpoint = {selected_checkpoint: selected_checkpoint}
+                    cp_path = self.checkpoint_files.get(self.selected_type.lower(), {}).get(selected_checkpoint)
+                    self.selected_Checkpoint = {selected_checkpoint: cp_path}
                     self.logger.info(f"✅ Checkpoint 선택 (Random): {selected_checkpoint}")
             
             elif self.selected_kind_Checkpoint.lower() == 'db':
@@ -664,11 +640,13 @@ class ComfyUIAutomation:
                         if sum(weights) <= 0:
                             # 가중치가 모두 0인 경우 랜덤으로 선택
                             selected_checkpoint = random.choice(candidate_keys)
-                            self.selected_Checkpoint = {selected_checkpoint: selected_checkpoint}
+                            cp_path = self.checkpoint_files.get(self.selected_type.lower(), {}).get(selected_checkpoint)
+                            self.selected_Checkpoint = {selected_checkpoint: cp_path}
                             self.logger.info(f"✅ Checkpoint 선택 (DB->fallback Random): {selected_checkpoint}")
                         else:
                             selected_checkpoint = random.choices(candidate_keys, weights=weights, k=1)[0]
-                            self.selected_Checkpoint = {selected_checkpoint: selected_checkpoint}
+                            cp_path = self.checkpoint_files.get(self.selected_type.lower(), {}).get(selected_checkpoint)
+                            self.selected_Checkpoint = {selected_checkpoint: cp_path}
                             self.logger.info(f"✅ Checkpoint 선택 (DB): {selected_checkpoint} (weights sum={sum(weights)})")
                 except Exception as e:
                     self.logger.error(f"DB 기반 Checkpoint 선택 오류: {e}")
@@ -692,11 +670,12 @@ class ComfyUIAutomation:
                     sel = self._pop_from_cycle('checkpoint', self.selected_type.lower(), candidate_keys, k=1)
                     if sel:
                         selected_checkpoint = sel[0]
-                        self.selected_Checkpoint = {selected_checkpoint: selected_checkpoint}
+                        cp_path = self.checkpoint_files.get(self.selected_type.lower(), {}).get(selected_checkpoint)
+                        self.selected_Checkpoint = {selected_checkpoint: cp_path}
                         self.logger.info(f"✅ Checkpoint 선택 (Cycle): {selected_checkpoint}")
                 else:
                     self.logger.info("Checkpoint Cycle: 후보가 없습니다")
-        
+            self.logger.info(self.selected_Checkpoint)
         except Exception as e:
             self.logger.error(f"Checkpoint 설정 중 오류: {e}")
 
@@ -705,6 +684,23 @@ class ComfyUIAutomation:
         '''
         self.main_config 의 GetCharKind 의 값을 가중치 기반으로 랜덤 선택하여 반환
         self.main_config 의 path(LoraPath,LoraCharPath) 의 파일들 중에서 선택
+
+        Weight:
+        {self.selected_type}/Char/*.yml 파일의 각 키마다 Weight값을 가중치로 사용.
+        그중에서 랜덤으로 하나 선택하여 self.selected_char에 { 키값:파일전체경로} 저장.
+        
+        DB: 
+        기본 구조는 set_checkpoint() 의 DB 모드와 유사.
+        LoraDbWeight,LoraDbWeightMax,LoraDbWeightMin 활용.
+        LoraDbCnt 만큼 선택.
+
+        Random:
+        기본 구조는 set_checkpoint() 의 Random 모드와 유사.
+        LoraRandomCnt 만큼 선택.
+
+        Cycle:
+        기본 구조는 set_checkpoint() 의 Cycle 모드와 유사.
+        LoraCycleCnt 만큼 선택.
 
         '''
         self.logger.info(f"👤 CharLoop 시작")
@@ -728,38 +724,8 @@ class ComfyUIAutomation:
             type_data = self.data.get(self.selected_type.lower(), {})
             
             if selected_kind.lower() == 'weight':
-                char_weight_per = self.main_config.get('CharWeightPer', 0.75)
-                lora_yml = type_data.get('lora', {})
-                weight_char_yml = type_data.get('WeightChar', {})
-                # 실제 LoraPath의 char 서브폴더에 존재하는 모델만 후보로 삼기
-                char_folder = str(self.main_config.get('LoraCharPath', 'char')).lower()
-                try:
-                    valid_char_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(char_folder, {}).keys())
-                except Exception:
-                    valid_char_keys = set()
+                pass
 
-                merged_weights = {}
-                for yml_name, yml_data in lora_yml.items():
-                    if isinstance(yml_data, dict):
-                        for key, val in yml_data.items():
-                            if key not in valid_char_keys:
-                                continue
-                            if isinstance(val, dict):
-                                weight = val.get('weight', self.main_config.get('CharWeightDefault', 100))
-                                merged_weights[key] = merged_weights.get(key, 0) + weight
-                
-                if random.random() < char_weight_per and weight_char_yml:
-                    for key, weight in weight_char_yml.items():
-                        if isinstance(weight, (int, float)):
-                            merged_weights[key] = merged_weights.get(key, 0) + weight
-                
-                if merged_weights:
-                    char_names = list(merged_weights.keys())
-                    char_weights = list(merged_weights.values())
-                    selected_char = random.choices(char_names, weights=char_weights, k=1)[0]
-                    self.selected_char = {selected_char: selected_char}
-                    self.logger.info(f"✅ Char 선택 (Weight): {selected_char}")
-            
             elif selected_kind.lower() == 'random':
                 lora_yml = type_data.get('lora', {})
                 # 후보는 self.data에 정의된 키와 실제 char 폴더에 존재하는 파일의 교집합
@@ -778,7 +744,8 @@ class ComfyUIAutomation:
 
                 if all_loras:
                     selected_char = random.choice(all_loras)
-                    self.selected_char = {selected_char: selected_char}
+                    char_path = self.lora_files.get(self.selected_type.lower(), {}).get(char_folder, {}).get(selected_char)
+                    self.selected_char = {selected_char: char_path}
                     self.logger.info(f"✅ Char 선택 (Random): {selected_char}")
             
             elif selected_kind.lower() == 'wildcard':                
@@ -811,13 +778,14 @@ class ComfyUIAutomation:
                     sel = self._pop_from_cycle('char', self.selected_type.lower(), candidate_keys, k=1)
                     if sel:
                         selected_char = sel[0]
-                        self.selected_char = {selected_char: selected_char}
+                        char_path = self.lora_files.get(self.selected_type.lower(), {}).get(char_folder, {}).get(selected_char)
+                        self.selected_char = {selected_char: char_path}
                         self.logger.info(f"✅ Char 선택 (Cycle): {selected_char}")
                 else:
                     self.logger.info(f"Char Cycle: 후보 없음")
 
 
-        
+            self.logger.info(self.selected_char)
         except Exception as e:
             self.logger.error(f"Char 설정 중 오류: {e}")
 
@@ -826,6 +794,26 @@ class ComfyUIAutomation:
         '''
         self.main_config 의 GetLoraKind 의 값을 가중치 기반으로 랜덤 선택하여 반환
         self.main_config 의 path(LoraPath,LoraEtcPath) 의 파일들 중에서 선택
+        self.data 활용하기.
+
+        DB: 
+        기본 구조는 set_checkpoint() 의 DB 모드와 유사.
+        LoraDbWeight,LoraDbWeightMax,LoraDbWeightMin 활용.
+        LoraDbCnt 만큼 선택.
+
+        Random:
+        기본 구조는 set_checkpoint() 의 Random 모드와 유사.
+        LoraRandomCnt 만큼 선택.
+
+        Cycle:
+        기본 구조는 set_checkpoint() 의 Cycle 모드와 유사.
+        LoraCycleCnt 만큼 선택.
+
+        Weight:
+        기본 구조는 set_checkpoint() 의 Weight 모드와 유사.
+        {self.selected_type}/lora/*.yml 파일의 각 키마다 Weight값을 가중치로 사용.
+        그중에서 랜덤으로 하나 선택하여 self.selected_loras에 { 키값:파일전체경로} 저장.
+        LoraWeightCnt 만큼 선택.
 
         '''
         self.logger.info(f"📋 QueueLoop 시작")
@@ -849,25 +837,7 @@ class ComfyUIAutomation:
             type_data = self.data.get(self.selected_type.lower(), {})
             
             if selected_kind.lower() == 'weight':
-                weight_lora_yml = type_data.get('WeightLora', {})
-                
-                if weight_lora_yml:
-                    # etc 서브폴더에 존재하는 모델만 후보로 필터링
-                    etc_folder = str(self.main_config.get('LoraEtcPath', 'etc')).lower()
-                    try:
-                        valid_etc_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).keys())
-                    except Exception:
-                        valid_etc_keys = set()
-
-                    lora_names = [k for k in list(weight_lora_yml.keys()) if k in valid_etc_keys]
-                    if lora_names:
-                        lora_weights = [float(weight_lora_yml.get(k, 1.0) or 1.0) for k in lora_names]
-                        lora_cnt = random_int_or_value(self.main_config.get('LoraDbCnt', [1, 1]))
-                        selected_loras = random.choices(lora_names, weights=lora_weights, k=min(lora_cnt, len(lora_names)))
-                        self.selected_loras = {lora: lora for lora in selected_loras}
-                        self.logger.info(f"✅ Lora 선택 (Weight): {selected_loras}")
-                    else:
-                        self.logger.info("Lora 선택(Weight): 후보 없음")
+                pass
             
             elif selected_kind.lower() == 'random':
                 lora_yml = type_data.get('lora', {})
@@ -888,12 +858,15 @@ class ComfyUIAutomation:
                 if all_loras:
                     lora_cnt = random_int_or_value(self.main_config.get('LoraRandomCnt', [1, 1]))
                     selected_loras = random.choices(all_loras, k=min(lora_cnt, len(all_loras)))
-                    self.selected_loras = {lora: lora for lora in selected_loras}
+                    mapped = {}
+                    for l in selected_loras:
+                        path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l)
+                        mapped[l] = path
+                    self.selected_loras = mapped
                     self.logger.info(f"✅ Lora 선택 (Random): {selected_loras}")
             
             elif selected_kind.lower() == 'wildcard':
-                lora_wildcard = self.main_config.get('LoraWildcard', {})
-                self.selected_loras = lora_wildcard
+                self.selected_loras = {}
                 self.logger.info(f"✅ Lora 선택 (Wildcard)")
             
             elif selected_kind.lower() == 'cycle':
@@ -918,11 +891,15 @@ class ComfyUIAutomation:
                     sel = self._pop_from_cycle('lora', self.selected_type.lower(), candidate_keys, k=lora_cnt)
                     if sel:
                         selected_loras = sel
-                        self.selected_loras = {lora: lora for lora in selected_loras}
+                        mapped = {}
+                        for l in selected_loras:
+                            path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l)
+                            mapped[l] = path
+                        self.selected_loras = mapped
                         self.logger.info(f"✅ Lora 선택 (Cycle): {selected_loras}")
                 else:
                     self.logger.info("Lora Cycle: 후보 없음")
-        
+            self.logger.info(self.selected_loras)
         except Exception as e:
             self.logger.error(f"Lora 설정 중 오류: {e}")
 
@@ -1017,9 +994,7 @@ class ComfyUIAutomation:
                             for kk in v.keys():
                                 if isinstance(kk, str):
                                     keys.append(kk)
-                        # 값이 문자열이면 추가
-                        if isinstance(v, str):
-                            keys.append(v)
+                        # 문자열 값(예: 전체경로)은 카운트 키로 사용하지 않음
                 elif isinstance(obj, (list, tuple)):
                     for it in obj:
                         keys.extend(_extract_keys_simple(it))
