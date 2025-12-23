@@ -81,6 +81,12 @@ class ComfyUIAutomation:
         self.checkpoint_files = {}
         self.file_watcher = None
 
+        self.data = {}
+        self.selected_type = None
+        self.selected_Checkpoint = {}
+        self.selected_char = {}
+        self.selected_loras = {}
+
     def get_main_config(self):
         '''
         config.yml 파일을 읽어서 self.main_config에 저장
@@ -529,35 +535,381 @@ class ComfyUIAutomation:
             self.file_watcher.stop()
             self.file_watcher = None
 
-    def set_checkpoint_loop(self, checkpoint_loop_count):
+    def set_checkpoint(self):
         '''
-        CheckpointLoop 시작시 호출되는 함수
+        self.main_config 의 GetCheckpointKind 의 값을 가중치 기반으로 랜덤 선택하여 반환
         
-        Args:
-            checkpoint_loop_count: 현재 CheckpointLoop 카운트
-        '''
-        self.logger.info(f"🔄 CheckpointLoop 시작: {checkpoint_loop_count}회 반복")
-        # 여기에 checkpoint loop 시작시 필요한 초기화 작업을 추가할 수 있음
+        Weight: 
+        {self.selected_type}/Checkpoint/*.yml , 
+        {self.selected_type}/WeightCheckpoint.yml 
+        순으로 찿아서 참조(self.data 활용하기).
+        키의 Weight값을 가중치로 사용.
+        그중에서 랜덤으로 하나 선택하여 self.selected_Checkpoint에 { 키값:파일전체경로} 저장.
 
-    def set_char_loop(self, char_loop_count):
-        '''
-        CharLoop 시작시 호출되는 함수
+        DB: 
+        저장된 db 카운트를 기준으로
+        self.main_config의 (CheckpointDbWeight-카운트) 값을 가중치로 사용하여 랜덤 선택.
+        가중치의 최대값은 CheckpointDbWeightMax 로 제한.
+        가중치의 최소값은 CheckpointDbWeightMin 로 제한.
         
-        Args:
-            char_loop_count: 현재 CharLoop 카운트
         '''
-        self.logger.info(f"👤 CharLoop 시작: {char_loop_count}회 반복")
-        # 여기에 char loop 시작시 필요한 초기화 작업을 추가할 수 있음
+        self.logger.info(f"🔄 CheckpointLoop 시작")
+        
+        try:
+            get_checkpoint_kind = self.main_config.get('GetCheckpointKind', {})
+            if not get_checkpoint_kind:
+                self.logger.warning("GetCheckpointKind 설정이 없습니다.")
+                return
+            
+            kind_names = list(get_checkpoint_kind.keys())
+            kind_weights = [float(get_checkpoint_kind.get(k, 1.0) or 1.0) for k in kind_names]
+            self.selected_kind_Checkpoint = random.choices(kind_names, weights=kind_weights, k=1)[0]
+            
+            self.logger.debug(f"Checkpoint 방식 선택: {self.selected_kind_Checkpoint}")
+            
+            if not self.selected_type or self.selected_type.lower() not in self.data:
+                self.logger.warning(f"선택된 타입이 없거나 데이터가 없습니다: {self.selected_type}")
+                return
+            
+            type_data = self.data.get(self.selected_type.lower(), {})
+            
+            if self.selected_kind_Checkpoint.lower() == 'weight':
+                checkpoint_weight_per = self.main_config.get('CheckpointWeightPer', 0.75)
+                checkpoint_yml = type_data.get('checkpoint', {})
+                weight_checkpoint_yml = type_data.get('WeightCheckpoint', {})
+                
+                merged_weights = {}
+                for yml_name, yml_data in checkpoint_yml.items():
+                    if isinstance(yml_data, dict):
+                        for key, val in yml_data.items():
+                            if isinstance(val, dict):
+                                weight = val.get('weight', self.main_config.get('CheckpointWeightDefault', 150))
+                                merged_weights[key] = merged_weights.get(key, 0) + weight
+                
+                if random.random() < checkpoint_weight_per and weight_checkpoint_yml:
+                    for key, weight in weight_checkpoint_yml.items():
+                        if isinstance(weight, (int, float)):
+                            merged_weights[key] = merged_weights.get(key, 0) + weight
+                
+                if merged_weights:
+                    checkpoint_names = list(merged_weights.keys())
+                    checkpoint_weights = list(merged_weights.values())
+                    selected_checkpoint = random.choices(checkpoint_names, weights=checkpoint_weights, k=1)[0]
+                    self.selected_Checkpoint = {selected_checkpoint: selected_checkpoint}
+                    self.logger.info(f"✅ Checkpoint 선택 (Weight): {selected_checkpoint}")
+            
+            elif self.selected_kind_Checkpoint.lower() == 'random':
+                checkpoint_yml = type_data.get('checkpoint', {})
+                all_checkpoints = []
+                for yml_data in checkpoint_yml.values():
+                    if isinstance(yml_data, dict):
+                        all_checkpoints.extend(yml_data.keys())
+                
+                if all_checkpoints:
+                    selected_checkpoint = random.choice(all_checkpoints)
+                    self.selected_Checkpoint = {selected_checkpoint: selected_checkpoint}
+                    self.logger.info(f"✅ Checkpoint 선택 (Random): {selected_checkpoint}")
+            
+            elif self.selected_kind_Checkpoint.lower() == 'db':
+                # TinyDB의 count.db에서 각 키의 사용횟수를 읽어 가중치 계산
+                try:
+                    from tinydb import TinyDB, Query
+                    db_path = os.path.join(self.script_dir, 'count.db')
+                    db = TinyDB(db_path)
+                    Q = Query()
+                except Exception as e:
+                    self.logger.warning(f"DB 읽기 실패: {e}")
+                    db = None
 
-    def set_queue_loop(self, queue_loop_count):
-        '''
-        QueueLoop 시작시 호출되는 함수
+                try:
+                    # 후보 체크포인트 키 수집
+                    candidate_keys = []
+                    for yml_data in checkpoint_yml.values():
+                        if isinstance(yml_data, dict):
+                            candidate_keys.extend(list(yml_data.keys()))
+
+                    if not candidate_keys:
+                        self.logger.warning("DB 선택에 사용할 후보 Checkpoint가 없습니다.")
+                    else:
+                        base_weight = int(self.main_config.get('CheckpointDbWeight',
+                                                               self.main_config.get('CheckpointWeightDefault', 150)))
+                        max_w = int(self.main_config.get('CheckpointDbWeightMax', 100))
+                        min_w = int(self.main_config.get('CheckpointDbWeightMin', 1))
+
+                        weights = []
+                        for k in candidate_keys:
+                            cnt = 0
+                            try:
+                                if db is not None:
+                                    res = db.search(Q.key == k)
+                                    if res:
+                                        cnt = int(res[0].get('count', 0))
+                            except Exception:
+                                cnt = 0
+
+                            w = base_weight - cnt
+                            if w > max_w:
+                                w = max_w
+                            if w < min_w:
+                                w = min_w
+                            weights.append(max(0, int(w)))
+
+                        if sum(weights) <= 0:
+                            # 가중치가 모두 0인 경우 랜덤으로 선택
+                            selected_checkpoint = random.choice(candidate_keys)
+                            self.selected_Checkpoint = {selected_checkpoint: selected_checkpoint}
+                            self.logger.info(f"✅ Checkpoint 선택 (DB->fallback Random): {selected_checkpoint}")
+                        else:
+                            selected_checkpoint = random.choices(candidate_keys, weights=weights, k=1)[0]
+                            self.selected_Checkpoint = {selected_checkpoint: selected_checkpoint}
+                            self.logger.info(f"✅ Checkpoint 선택 (DB): {selected_checkpoint} (weights sum={sum(weights)})")
+                except Exception as e:
+                    self.logger.error(f"DB 기반 Checkpoint 선택 오류: {e}")
+                finally:
+                    try:
+                        if db is not None:
+                            db.close()
+                    except Exception:
+                        pass
         
-        Args:
-            queue_loop_count: 현재 QueueLoop 카운트
+        except Exception as e:
+            self.logger.error(f"Checkpoint 설정 중 오류: {e}")
+
+
+    def set_char(self):
         '''
-        self.logger.info(f"📋 QueueLoop 시작: {queue_loop_count}회 반복")
-        # 여기에 queue loop 시작시 필요한 초기화 작업을 추가할 수 있음
+        self.main_config 의 GetCharKind 의 값을 가중치 기반으로 랜덤 선택하여 반환
+        
+
+        '''
+        self.logger.info(f"👤 CharLoop 시작")
+        
+        try:
+            get_char_kind = self.main_config.get('GetCharKind', {})
+            if not get_char_kind:
+                self.logger.warning("GetCharKind 설정이 없습니다.")
+                return
+            
+            kind_names = list(get_char_kind.keys())
+            kind_weights = [float(get_char_kind.get(k, 1.0) or 1.0) for k in kind_names]
+            selected_kind = random.choices(kind_names, weights=kind_weights, k=1)[0]
+            
+            self.logger.debug(f"Char 방식 선택: {selected_kind}")
+            
+            if not self.selected_type or self.selected_type.lower() not in self.data:
+                self.logger.warning(f"선택된 타입이 없거나 데이터가 없습니다: {self.selected_type}")
+                return
+            
+            type_data = self.data.get(self.selected_type.lower(), {})
+            
+            if selected_kind.lower() == 'weight':
+                char_weight_per = self.main_config.get('CharWeightPer', 0.75)
+                lora_yml = type_data.get('lora', {})
+                weight_char_yml = type_data.get('WeightChar', {})
+                
+                merged_weights = {}
+                for yml_name, yml_data in lora_yml.items():
+                    if isinstance(yml_data, dict):
+                        for key, val in yml_data.items():
+                            if isinstance(val, dict):
+                                weight = val.get('weight', self.main_config.get('CharWeightDefault', 100))
+                                merged_weights[key] = merged_weights.get(key, 0) + weight
+                
+                if random.random() < char_weight_per and weight_char_yml:
+                    for key, weight in weight_char_yml.items():
+                        if isinstance(weight, (int, float)):
+                            merged_weights[key] = merged_weights.get(key, 0) + weight
+                
+                if merged_weights:
+                    char_names = list(merged_weights.keys())
+                    char_weights = list(merged_weights.values())
+                    selected_char = random.choices(char_names, weights=char_weights, k=1)[0]
+                    self.selected_char = {selected_char: selected_char}
+                    self.logger.info(f"✅ Char 선택 (Weight): {selected_char}")
+            
+            elif selected_kind.lower() == 'random':
+                lora_yml = type_data.get('lora', {})
+                all_loras = []
+                for yml_data in lora_yml.values():
+                    if isinstance(yml_data, dict):
+                        all_loras.extend(yml_data.keys())
+                
+                if all_loras:
+                    selected_char = random.choice(all_loras)
+                    self.selected_char = {selected_char: selected_char}
+                    self.logger.info(f"✅ Char 선택 (Random): {selected_char}")
+            
+            elif selected_kind.lower() == 'wildcard':                
+                self.selected_char = None
+                self.logger.info(f"✅ Char 선택 (Wildcard)")
+            
+            elif selected_kind.lower() == 'skip':
+                self.selected_char = None
+                self.logger.info(f"✅ Char 선택 (Skip)")
+            
+            elif selected_kind.lower() == 'cycle':
+                self.logger.info(f"✅ Char 선택 (cycle)")
+
+
+        
+        except Exception as e:
+            self.logger.error(f"Char 설정 중 오류: {e}")
+
+
+    def set_lora(self):
+        '''
+        self.main_config 의 GetLoraKind 의 값을 가중치 기반으로 랜덤 선택하여 반환
+        
+
+        '''
+        self.logger.info(f"📋 QueueLoop 시작")
+        
+        try:
+            get_lora_kind = self.main_config.get('GetLoraKind', {})
+            if not get_lora_kind:
+                self.logger.warning("GetLoraKind 설정이 없습니다.")
+                return
+            
+            kind_names = list(get_lora_kind.keys())
+            kind_weights = [float(get_lora_kind.get(k, 1.0) or 1.0) for k in kind_names]
+            selected_kind = random.choices(kind_names, weights=kind_weights, k=1)[0]
+            
+            self.logger.debug(f"Lora 방식 선택: {selected_kind}")
+            
+            if not self.selected_type or self.selected_type.lower() not in self.data:
+                self.logger.warning(f"선택된 타입이 없거나 데이터가 없습니다: {self.selected_type}")
+                return
+            
+            type_data = self.data.get(self.selected_type.lower(), {})
+            
+            if selected_kind.lower() == 'weight':
+                weight_lora_yml = type_data.get('WeightLora', {})
+                
+                if weight_lora_yml:
+                    lora_names = list(weight_lora_yml.keys())
+                    lora_weights = [float(weight_lora_yml.get(k, 1.0) or 1.0) for k in lora_names]
+                    lora_cnt = random_int_or_value(self.main_config.get('LoraDbCnt', [1, 1]))
+                    selected_loras = random.choices(lora_names, weights=lora_weights, k=min(lora_cnt, len(lora_names)))
+                    self.selected_loras = {lora: lora for lora in selected_loras}
+                    self.logger.info(f"✅ Lora 선택 (Weight): {selected_loras}")
+            
+            elif selected_kind.lower() == 'random':
+                lora_yml = type_data.get('lora', {})
+                all_loras = []
+                for yml_data in lora_yml.values():
+                    if isinstance(yml_data, dict):
+                        all_loras.extend(yml_data.keys())
+                
+                if all_loras:
+                    lora_cnt = random_int_or_value(self.main_config.get('LoraRandomCnt', [1, 1]))
+                    selected_loras = random.choices(all_loras, k=min(lora_cnt, len(all_loras)))
+                    self.selected_loras = {lora: lora for lora in selected_loras}
+                    self.logger.info(f"✅ Lora 선택 (Random): {selected_loras}")
+            
+            elif selected_kind.lower() == 'wildcard':
+                lora_wildcard = self.main_config.get('LoraWildcard', {})
+                self.selected_loras = lora_wildcard
+                self.logger.info(f"✅ Lora 선택 (Wildcard)")
+            
+            elif selected_kind.lower() == 'cycle':
+                lora_yml = type_data.get('lora', {})
+                all_loras = []
+                for yml_data in lora_yml.values():
+                    if isinstance(yml_data, dict):
+                        all_loras.extend(yml_data.keys())
+                
+                if all_loras:
+                    lora_cnt = random_int_or_value(self.main_config.get('LoraCycleCnt', [1, 1]))
+                    selected_loras = all_loras[:lora_cnt]
+                    self.selected_loras = {lora: lora for lora in selected_loras}
+                    self.logger.info(f"✅ Lora 선택 (Cycle): {selected_loras}")
+        
+        except Exception as e:
+            self.logger.error(f"Lora 설정 중 오류: {e}")
+
+    def db_save(self):
+        '''
+        self.selected_Checkpoint,
+        self.selected_char,
+        self.selected_loras,
+        키값의 사용횟수를 
+        count.db 파일에 DB형태로 저장.
+        count.xlsx 파일도 병행 저장.
+        '''
+        try:
+            from tinydb import TinyDB, Query
+        except Exception as e:
+            self.logger.error(f"DB 저장을 위한 tinydb import 실패: {e}")
+            return
+
+        try:
+            import pandas as pd
+        except Exception:
+            pd = None
+
+        try:
+            db_path = os.path.join(self.script_dir, 'count.db')
+            db = TinyDB(db_path)
+            Q = Query()
+
+            def _inc_key(key):
+                if not key:
+                    return
+                try:
+                    results = db.search(Q.key == key)
+                    if results:
+                        current = results[0].get('count', 0)
+                        db.update({'count': current + 1}, Q.key == key)
+                    else:
+                        db.insert({'key': key, 'count': 1})
+                except Exception as e:
+                    self.logger.warning(f"DB 증가 실패({key}): {e}")
+
+            def _collect_keys(obj):
+                keys = []
+                if obj is None:
+                    return keys
+                if isinstance(obj, dict):
+                    # simple mapping {name: name} or nested dicts
+                    for k, v in obj.items():
+                        if isinstance(v, dict):
+                            keys.append(k)
+                            for sk in v.keys():
+                                keys.append(f"{k}:{sk}")
+                        else:
+                            keys.append(k)
+                elif isinstance(obj, (list, tuple)):
+                    for it in obj:
+                        keys.extend(_collect_keys(it))
+                elif isinstance(obj, str):
+                    keys.append(obj)
+                return keys
+
+            keys = []
+            keys.extend(_collect_keys(self.selected_Checkpoint))
+            keys.extend(_collect_keys(self.selected_char))
+            keys.extend(_collect_keys(self.selected_loras))
+
+            for k in keys:
+                _inc_key(k)
+
+            # 엑셀로도 저장
+            if pd is not None:
+                try:
+                    records = db.all()
+                    df = pd.DataFrame(records)
+                    excel_path = os.path.join(self.script_dir, 'count.xlsx')
+                    df.to_excel(excel_path, index=False)
+                except Exception as e:
+                    self.logger.warning(f"엑셀 저장 실패: {e}")
+
+            db.close()
+            self.logger.info(f"DB 저장 완료: {os.path.abspath(db_path)}")
+        except Exception as e:
+            self.logger.error(f"db_save 처리 중 오류: {e}")
+
+    def Queue_send(self):
+        pass
 
     def run(self):
         '''
@@ -584,15 +936,15 @@ class ComfyUIAutomation:
 
                 # CheckpointTypes에서 가중치 기반으로 랜덤으로 하나 선택
                 checkpoint_types = self.main_config.get('CheckpointTypes', {})
-                selected_type = None
+                
                 if checkpoint_types:
                     try:
                         names = list(checkpoint_types.keys())
                         weights = [float(checkpoint_types.get(n, 1.0) or 1.0) for n in names]
-                        selected_type = random.choices(names, weights=weights, k=1)[0]
+                        self.selected_type = random.choices(names, weights=weights, k=1)[0]
                     except Exception:
-                        selected_type = random.choice(list(checkpoint_types.keys()))
-                self.logger.info(f"선택된 CheckpointType: {selected_type}")
+                        self.selected_type = random.choice(list(checkpoint_types.keys()))
+                self.logger.info(f"선택된 CheckpointType: {self.selected_type}")
 
                 # 반복 횟수는 설정값을 random_int_or_value로 처리
                 try:
@@ -665,7 +1017,7 @@ class ComfyUIAutomation:
 
                     # CheckpointLoop 새로 시작할 때
                     if ck_idx != last_ck_idx:
-                        self.set_checkpoint_loop(checkpoint_loop)
+                        self.set_checkpoint()
                         last_ck_idx = ck_idx
 
                     # char 또는 queue 범위가 바뀌었으면 해당 조합은 건너뜀
@@ -675,7 +1027,7 @@ class ComfyUIAutomation:
 
                     # CharLoop 새로 시작할 때
                     if ch_idx != last_ch_idx:
-                        self.set_char_loop(char_loop)
+                        self.set_char()
                         last_ch_idx = ch_idx
 
                     if cfg_q_max and (q_idx + 1) > cfg_q_max:
@@ -683,15 +1035,20 @@ class ComfyUIAutomation:
                         continue
 
                     # QueueLoop 시작 (매번 호출)
-                    self.set_queue_loop(queue_loop)
+                    self.set_lora()
+
+                    self.db_save()
+                    
+                    # 
+                    self.Queue_send()
 
                     # 실제 작업 수행 지점 (여기서 selected_type, ck_idx, ch_idx, q_idx를 사용)
-                    self.logger.info(f"실행: type={selected_type}, ck={ck_idx+1}/{checkpoint_loop}, ch={ch_idx+1}/{char_loop}, q={q_idx+1}/{queue_loop}")
+                    self.logger.info(f"실행: type={self.selected_type}, ck={ck_idx+1}/{checkpoint_loop}, ch={ch_idx+1}/{char_loop}, q={q_idx+1}/{queue_loop}")
 
                 if stop_batch:
                     # 배치 중단 시 다음 배치로 넘어감
                     continue
-                
+
                 if self.main_config.get('test', False):
                     break  # 테스트용 (무한루프 방지)
                 
