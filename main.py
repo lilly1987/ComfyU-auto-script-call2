@@ -39,30 +39,9 @@ from utils.config_loader import load_config
 from utils.file_utils import resolve_path, collect_files_in_dir
 from utils.file_watcher import FileWatcher
 from utils.random_utils import random_int_or_value, random_float_or_value
+from utils.automation_utils import setup_logger, pop_from_cycle
 
 # 로거 초기화
-def setup_logger(name=__name__, level=logging.INFO):
-    """Rich 로거 설정"""
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    
-    # 기존 핸들러 제거
-    logger.handlers.clear()
-    
-    # Rich 핸들러 추가
-    handler = RichHandler(
-        rich_tracebacks=True,
-        show_path=True,
-        show_time=True,
-        show_level=True
-    )
-    handler.setLevel(level)
-    
-    logger.addHandler(handler)
-    logger.propagate = False
-    
-    return logger
-
 logger = setup_logger()
 logger.info(f"테스트")
 
@@ -442,7 +421,7 @@ class ComfyUIAutomation:
                 if file_name in named_file_map:
                     try:
                         self.data[type_key][named_file_map[file_name]] = load_config(str(file_path))
-                        self.logger.info(f"✅ {file_path.name} 업데이트 완료")
+                        self.logger.info(f" {file_path.name} 업데이트 완료")
                     except Exception as e:
                         self.logger.warning(f"파일 로드 실패 ({file_path}): {e}")
             
@@ -461,7 +440,7 @@ class ComfyUIAutomation:
                             filtered = {k: v for k, v in yml_data.items() if k in valid_checkpoint_keys}
                             if filtered:
                                 self.data[type_key]['checkpoint'][file_name] = filtered
-                            self.logger.info(f"✅ Checkpoint YML {file_path.name} 업데이트 완료")
+                            self.logger.info(f" Checkpoint YML {file_path.name} 업데이트 완료")
                     except Exception as e:
                         self.logger.warning(f"Checkpoint YML 로드 실패 ({file_path}): {e}")
                 
@@ -479,7 +458,7 @@ class ComfyUIAutomation:
                             filtered = {k: v for k, v in yml_data.items() if k in valid_lora_keys}
                             if filtered:
                                 self.data[type_key]['lora'][file_name] = filtered
-                            self.logger.info(f"✅ Lora YML {file_path.name} 업데이트 완료")
+                            self.logger.info(f" Lora YML {file_path.name} 업데이트 완료")
                     except Exception as e:
                         self.logger.warning(f"Lora YML 로드 실패 ({file_path}): {e}")
         
@@ -593,7 +572,7 @@ class ComfyUIAutomation:
                     selected_checkpoint = random.choices(checkpoint_names, weights=checkpoint_weights, k=1)[0]
                     cp_path = self.checkpoint_files.get(self.selected_type.lower(), {}).get(selected_checkpoint)
                     self.selected_Checkpoint = {selected_checkpoint: cp_path}
-                    self.logger.info(f"✅ Checkpoint 선택 (Weight): {selected_checkpoint}")
+                    self.logger.info(f" Checkpoint 선택 (Weight): {selected_checkpoint}")
             
             elif self.selected_kind_Checkpoint.lower() == 'random':
                 checkpoint_yml = type_data.get('checkpoint', {})
@@ -606,7 +585,7 @@ class ComfyUIAutomation:
                     selected_checkpoint = random.choice(all_checkpoints)
                     cp_path = self.checkpoint_files.get(self.selected_type.lower(), {}).get(selected_checkpoint)
                     self.selected_Checkpoint = {selected_checkpoint: cp_path}
-                    self.logger.info(f"✅ Checkpoint 선택 (Random): {selected_checkpoint}")
+                    self.logger.info(f" Checkpoint 선택 (Random): {selected_checkpoint}")
             
             elif self.selected_kind_Checkpoint.lower() == 'db':
                 # TinyDB의 count.db에서 각 키의 사용횟수를 읽어 가중치 계산
@@ -657,12 +636,12 @@ class ComfyUIAutomation:
                             selected_checkpoint = random.choice(candidate_keys)
                             cp_path = self.checkpoint_files.get(self.selected_type.lower(), {}).get(selected_checkpoint)
                             self.selected_Checkpoint = {selected_checkpoint: cp_path}
-                            self.logger.info(f"✅ Checkpoint 선택 (DB->fallback Random): {selected_checkpoint}")
+                            self.logger.info(f" Checkpoint 선택 (DB->fallback Random): {selected_checkpoint}")
                         else:
                             selected_checkpoint = random.choices(candidate_keys, weights=weights, k=1)[0]
                             cp_path = self.checkpoint_files.get(self.selected_type.lower(), {}).get(selected_checkpoint)
                             self.selected_Checkpoint = {selected_checkpoint: cp_path}
-                            self.logger.info(f"✅ Checkpoint 선택 (DB): {selected_checkpoint} (weights sum={sum(weights)})")
+                            self.logger.info(f" Checkpoint 선택 (DB): {selected_checkpoint} (weights sum={sum(weights)})")
                 except Exception as e:
                     self.logger.error(f"DB 기반 Checkpoint 선택 오류: {e}")
                 finally:
@@ -688,7 +667,7 @@ class ComfyUIAutomation:
                         selected_checkpoint = sel[0]
                         cp_path = self.checkpoint_files.get(self.selected_type.lower(), {}).get(selected_checkpoint)
                         self.selected_Checkpoint = {selected_checkpoint: cp_path}
-                        self.logger.info(f"✅ Checkpoint 선택 (Cycle): {selected_checkpoint}")
+                        self.logger.info(f" Checkpoint 선택 (Cycle): {selected_checkpoint}")
                 else:
                     self.logger.info("Checkpoint Cycle: 후보가 없습니다")
             # self.logger.info(self.selected_Checkpoint)
@@ -766,7 +745,7 @@ class ComfyUIAutomation:
                     selected_char = random.choices(char_names, weights=char_weights, k=1)[0]
                     char_path = self.lora_files.get(self.selected_type.lower(), {}).get(char_folder, {}).get(selected_char)
                     self.selected_char = {selected_char: char_path}
-                    self.logger.info(f"✅ Char 선택 (Weight): {selected_char}")
+                    self.logger.info(f"Char 선택 (Weight): {selected_char}")
 
             elif selected_kind.lower() == 'random':
                 lora_yml = type_data.get('lora', {})
@@ -788,7 +767,7 @@ class ComfyUIAutomation:
                     selected_char = random.choice(all_loras)
                     char_path = self.lora_files.get(self.selected_type.lower(), {}).get(char_folder, {}).get(selected_char)
                     self.selected_char = {selected_char: char_path}
-                    self.logger.info(f"✅ Char 선택 (Random): {selected_char}")
+                    self.logger.info(f" Char 선택 (Random): {selected_char}")
 
             elif selected_kind.lower() == 'db':
                 # TinyDB의 char 테이블을 사용하여 사용횟수 기반 가중치로 선택
@@ -849,7 +828,7 @@ class ComfyUIAutomation:
 
                         char_path = self.lora_files.get(self.selected_type.lower(), {}).get(char_folder, {}).get(sel)
                         self.selected_char = {sel: char_path}
-                        self.logger.info(f"✅ Char 선택 (DB): {sel}")
+                        self.logger.info(f" Char 선택 (DB): {sel}")
                 except Exception as e:
                     self.logger.error(f"Char DB 선택 오류: {e}")
                 finally:
@@ -861,11 +840,11 @@ class ComfyUIAutomation:
             
             elif selected_kind.lower() == 'wildcard':                
                 self.selected_char = None
-                self.logger.info(f"✅ Char 선택 (Wildcard)")
+                self.logger.info(f" Char 선택 (Wildcard)")
             
             elif selected_kind.lower() == 'skip':
                 self.selected_char = None
-                self.logger.info(f"✅ Char 선택 (Skip)")
+                self.logger.info(f" Char 선택 (Skip)")
             
             elif selected_kind.lower() == 'cycle':
                 # cycle 모드: char 후보 전체를 랜덤 순서로 하나씩 선택, 모두 사용하면 재섞음
@@ -891,7 +870,7 @@ class ComfyUIAutomation:
                         selected_char = sel[0]
                         char_path = self.lora_files.get(self.selected_type.lower(), {}).get(char_folder, {}).get(selected_char)
                         self.selected_char = {selected_char: char_path}
-                        self.logger.info(f"✅ Char 선택 (Cycle): {selected_char}")
+                        self.logger.info(f" Char 선택 (Cycle): {selected_char}")
                 else:
                     self.logger.info(f"Char Cycle: 후보 없음")
 
@@ -1044,7 +1023,7 @@ class ComfyUIAutomation:
                     selected_loras = random.choices(lora_names, weights=lora_weights, k=min(lora_cnt, len(lora_names)))
                     mapped = {l: self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l) for l in selected_loras}
                     self.selected_loras = mapped
-                    self.logger.info(f"✅ Lora 선택 (Weight): {selected_loras}")
+                    self.logger.info(f" Lora 선택 (Weight): {selected_loras}")
             
             elif selected_kind.lower() == 'weightyml':
                 # WeightLora 설정을 self.data에서 찾아 per/weight/total 규칙으로 선택
@@ -1227,7 +1206,7 @@ class ComfyUIAutomation:
 
                         if mapped:
                             self.selected_loras = mapped
-                            self.logger.info(f"✅ Lora 선택 (WeightYml): {list(mapped.keys())}")
+                            self.logger.info(f" Lora 선택 (WeightYml): {list(mapped.keys())}")
                         else:
                             self.logger.info("WeightYml: 선택된 Lora가 없습니다.")
                     self.logger.debug(f"WeightYml 선택된 Loras: {self.selected_loras}")
@@ -1298,7 +1277,7 @@ class ComfyUIAutomation:
                             path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l)
                             mapped[l] = path
                         self.selected_loras = mapped
-                        self.logger.info(f"✅ Lora 선택 (DB): {selected}")
+                        self.logger.info(f" Lora 선택 (DB): {selected}")
                 except Exception as e:
                     self.logger.error(f"Lora DB 선택 오류: {e}")
                 finally:
@@ -1332,11 +1311,11 @@ class ComfyUIAutomation:
                         path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l)
                         mapped[l] = path
                     self.selected_loras = mapped
-                self.logger.info(f"✅ Lora 선택 (Random): {selected_loras}")
+                self.logger.info(f" Lora 선택 (Random): {selected_loras}")
             
             elif selected_kind.lower() == 'wildcard':
                 self.selected_loras = {}
-                self.logger.info(f"✅ Lora 선택 (Wildcard)")
+                self.logger.info(f" Lora 선택 (Wildcard)")
             
             elif selected_kind.lower() == 'cycle':
                 lora_yml = type_data.get('lora', {})
@@ -1365,7 +1344,7 @@ class ComfyUIAutomation:
                             path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l)
                             mapped[l] = path
                         self.selected_loras = mapped
-                    self.logger.info(f"✅ Lora 선택 (Cycle): {selected_loras}")
+                    self.logger.info(f" Lora 선택 (Cycle): {selected_loras}")
                 else:
                     self.logger.info("Lora Cycle: 후보 없음")
             # self.logger.info(self.selected_loras)
