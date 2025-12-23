@@ -276,12 +276,12 @@ class ComfyUIAutomation:
                 'WeightCheckpoint': WeightCheckpoint.yml의 dict ,
                 'WeightLora': WeightLora.yml의 dict
                 'checkpoint': { # path(dataPath,CheckpointTypes,'checkpoint')
-                    # "W:\ComfyUI_windows_portable\ComfyU-auto-script_data\IL\checkpoint\checkpoint1.yml"
+                    # "W:/ComfyUI_windows_portable/ComfyU-auto-script_data/IL/checkpoint/checkpoint1.yml"
                     'checkpoint1': { checkpoint1.yml의 dict },
                     ...
                 }
                 'lora': { # path(dataPath,CheckpointTypes,'lora')  
-                    # "W:\ComfyUI_windows_portable\ComfyU-auto-script_data\IL\lora\lora1.yml"
+                    # "W:/ComfyUI_windows_portable/ComfyU-auto-script_data/IL/lora/lora1.yml"
                     'lora1': { lora1.yml의 dict },
                     ...               
                 }
@@ -319,6 +319,7 @@ class ComfyUIAutomation:
         named_files = [
             ('setupWildcard', 'setupWildcard.yml'),
             ('setupWorkflow', 'setupWorkflow.yml'),
+            ('WeightLora', 'WeightLora.yml'),
         ]
 
         for type_name in checkpoint_types.keys():
@@ -436,7 +437,7 @@ class ComfyUIAutomation:
                     'setupWorkflow': 'setupWorkflow',
                     # 'WeightChar': 'WeightChar',
                     # 'WeightCheckpoint': 'WeightCheckpoint',
-                    # 'WeightLora': 'WeightLora',
+                    'WeightLora': 'WeightLora',
                 }
                 if file_name in named_file_map:
                     try:
@@ -670,6 +671,7 @@ class ComfyUIAutomation:
                             db.close()
                     except Exception:
                         pass
+            
             elif self.selected_kind_Checkpoint.lower() == 'cycle':
                 # 모든 후보를 랜덤 순서로 하나씩 선택, 다 사용하면 재섞음
                 checkpoint_yml = type_data.get('checkpoint', {})
@@ -924,6 +926,73 @@ class ComfyUIAutomation:
         그중에서 랜덤으로 하나 선택하여 self.selected_loras에 { 키값:파일전체경로} 저장.
         LoraWeightCnt 만큼 선택.
 
+
+        WeightYml:
+            self.main_config 의 WeightLora.yml 파일을 사용.
+            {
+                "group1": {
+                    "per": false,
+                    "perMax": [1,3], # per가 true일때만 사용
+                    "weight": true ,
+                    "weightMax": [1,3], # weight가 true일때만 사용
+                    'total': true ,
+                    "totalMax": [1,3],  # total이 true일때만 사용
+                    'dic':{
+                        'style':{
+                            weight: 1
+                            per: 0.0625
+                            loras:{
+                                'lora1': 100, # lora1 파일의 weight
+                                'lora2': 50,
+                            },
+                            'ymls': ['tentacles'], # {self.selected_type}/lora/*.yml 파일중에서 이 리스트에 포함된 yml것들만 사용
+                            'excludeGroups': ['group2'] # 이 그룹의 키들 중에서 이 리스트에 포함된 그룹은 사용하지 않음
+                            'excludeDic': ['style'] # 다른 그룹의 dic의 키들 중에서 이 리스트에 포함된 것들은 사용하지 않음
+                        },
+                    }
+                    'excludeGroups': ['group2'] # 이 그룹의 키들 중에서 이 리스트에 포함된 그룹은 사용하지 않음
+                    'excludeDic': ['style'] # 다른 그룹의 dic의 키들 중에서 이 리스트에 포함된 것들은 사용하지 않음
+                },
+            }
+            WeightLora.yml의 파일을 읽어서 로직 구현 방법:
+            
+                "group1"는 그룹id
+                'style'는 계열id
+                'lora1'는 lora id
+            
+            1단계 
+            
+                그룹별로 'per':true 존재 확인.
+                'dic'의 각 계열별로(style 등등) 'per'키가 존재하는지 확인하고, 해당 확률로 해당 계열 사용. 
+                최대 perMax 개수만큼만 가능.
+                이하 'lora 뽑기' 참고.
+
+            2단계
+
+                그룹별로 'weight':true 존재 확인.
+                'dic'의 각 계열별로(style 등등) 'weight'키가 존재하는 계열만 사용.
+                각 계열별 weight값을 가중치로 사용하여 랜덤 계열 선택. 최대 weightMax 개수만큼만 가능.
+                이하 'lora 뽑기' 참고.
+
+            3단계
+
+                1단계와 2단계에서 선택된 항목들을 합침.
+                그룹별로 'total':true 존재 확인.
+                합쳐진 항목들 중에서 랜덤으로 lora 선택. 최대 totalMax 개수만큼만 가능.
+
+            lora 뽑기            
+
+                'loras'키가 존재하면 그 안의 lora키의 값들을 가중치로 사용하여 lora 한개만 랜덤 선택.
+                'ymls'키가 존재하면 그 안의 yml 파일들 중에서만 사용.
+                {
+                    lora_id: {
+                        'weight': 100 # 없을경우 self.main_config['LoraWeightYmlWeight'] 기본값 사용
+                    }
+                }
+                'excludeGroups'키가 존재하면 그 그룹의 키들 중에서 이 리스트에 포함된 그룹은 사용하지 않음.
+                'excludeDic'키가 존재하면 다른 그룹의 dic의 키들 중에서 이 리스트에 포함된 것들은 사용하지 않음.
+
+
         '''
         # self.logger.info(f"📋 QueueLoop 시작")
         
@@ -976,78 +1045,268 @@ class ComfyUIAutomation:
                     mapped = {l: self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l) for l in selected_loras}
                     self.selected_loras = mapped
                     self.logger.info(f"✅ Lora 선택 (Weight): {selected_loras}")
-                elif selected_kind.lower() == 'db':
-                    # TinyDB의 lora 테이블을 사용하여 사용횟수 기반 가중치로 다중 선택
-                    try:
-                        from tinydb import TinyDB, Query
-                        db_path = os.path.join(self.script_dir, 'count.db')
-                        db = TinyDB(db_path)
-                        Q = Query()
-                        t_lora = db.table('lora')
-                    except Exception as e:
-                        self.logger.warning(f"DB 읽기 실패(Lora): {e}")
-                        db = None
+            
+            elif selected_kind.lower() == 'weightyml':
+                # WeightLora 설정을 self.data에서 찾아 per/weight/total 규칙으로 선택
+                try:
+                    # type_data 내부에서 WeightLora 역할을 하는 설정 탐색
+                    weight_cfg = None
 
-                    try:
-                        lora_yml = type_data.get('lora', {})
-                        candidate_keys = []
-                        for yml_data in lora_yml.values():
-                            if isinstance(yml_data, dict):
-                                candidate_keys.extend(list(yml_data.keys()))
+                    if 'WeightLora' in type_data and isinstance(type_data['WeightLora'], dict):
+                        weight_cfg = type_data['WeightLora']
 
+                    if not weight_cfg or not isinstance(weight_cfg, dict):
+                        self.logger.info('WeightYml: self.data에서 설정을 찾지 못했습니다. 스킵합니다.')
+                    else:
                         etc_folder = str(self.main_config.get('LoraEtcPath', 'etc')).lower()
-                        try:
-                            valid_etc_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).keys())
-                        except Exception:
-                            valid_etc_keys = set()
+                        type_lora_ymls = type_data.get('lora', {})
 
-                        candidate_keys = [k for k in candidate_keys if k in valid_etc_keys]
+                        def collect_loras_from_ymls(yml_list):
+                            ids = {}
+                            if not isinstance(yml_list, (list, tuple)):
+                                return ids
+                            for y in yml_list:
+                                yname = str(y)
+                                ydict = type_lora_ymls.get(yname)
+                                if isinstance(ydict, dict):
+                                    for lid, props in ydict.items():
+                                        ids[lid] = props
+                            return ids
 
-                        if not candidate_keys:
-                            self.logger.info("Lora DB: 후보 없음")
-                        else:
-                            base_weight = int(self.main_config.get('LoraDbWeight', self.main_config.get('LoraDbWeight', 50)))
-                            max_w = int(self.main_config.get('LoraDbWeightMax', 100))
-                            min_w = int(self.main_config.get('LoraDbWeightMin', 1))
+                        selected_series = []
 
-                            weights = []
-                            for k in candidate_keys:
-                                cnt = 0
+                        # 그룹별 처리
+                        for g_id, g_cfg in weight_cfg.items():
+                            if not isinstance(g_cfg, dict):
+                                continue
+                            dic = g_cfg.get('dic') or {}
+                            if not isinstance(dic, dict) or not dic:
+                                continue
+
+                            exclude_dic = set(g_cfg.get('excludeDic') or [])
+                            candidates = [s for s in dic.keys() if s not in exclude_dic]
+
+                            # 1) per 단계: 확률 기반 선택 (최대 perMax)
+                            per_selected = []
+                            if g_cfg.get('per'):
+                                perMax = random_int_or_value(g_cfg.get('perMax', [1, 1])) or 1
+                                for s in candidates:
+                                    s_cfg = dic.get(s, {}) or {}
+                                    try:
+                                        p = float(s_cfg.get('per'))
+                                    except Exception:
+                                        p = None
+                                    if p is None:
+                                        continue
+                                    try:
+                                        if random.random() < p:
+                                            per_selected.append(s)
+                                            if len(per_selected) >= perMax:
+                                                break
+                                    except Exception:
+                                        continue
+                            self.logger.debug(f"WeightYml 그룹[{g_id}] per 선택: {per_selected}")
+
+                            # 2) weight 단계: 계열별 weight 값으로 최대 weightMax 개 선택
+                            weight_selected = []
+                            if g_cfg.get('weight'):
+                                weightMax = random_int_or_value(g_cfg.get('weightMax', [1, 1])) or 1
+                                series_names = []
+                                series_weights = []
+                                for s in candidates:
+                                    s_cfg = dic.get(s, {}) or {}
+                                    if isinstance(s_cfg, dict) and 'weight' in s_cfg:
+                                        try:
+                                            w = float(s_cfg.get('weight') or 1.0)
+                                        except Exception:
+                                            w = 1.0
+                                        if w > 0:
+                                            series_names.append(s)
+                                            series_weights.append(w)
+                                if series_names:
+                                    pick_k = min(weightMax, len(series_names))
+                                    chosen = []
+                                    try:
+                                        while len(chosen) < pick_k and series_names:
+                                            sel = random.choices(series_names, weights=series_weights, k=1)[0]
+                                            if sel not in chosen:
+                                                chosen.append(sel)
+                                            if sel in series_names:
+                                                idx = series_names.index(sel)
+                                                series_names.pop(idx)
+                                                series_weights.pop(idx)
+                                    except Exception:
+                                        pass
+                                    weight_selected = chosen
+                            self.logger.debug(f"WeightYml 그룹[{g_id}] weight 선택: {weight_selected}")
+
+                            combined = list(dict.fromkeys(per_selected + weight_selected))
+
+                            # 3) total 단계: combined에서 totalMax개만 남김
+                            if g_cfg.get('total') and combined:
+                                totalMax = random_int_or_value(g_cfg.get('totalMax', [1, 1])) or 1
+                                if len(combined) > totalMax:
+                                    combined = random.sample(combined, totalMax)
+
+                            self.logger.debug(f"WeightYml 그룹[{g_id}] total 선택 후 최종: {combined}")
+
+                            for s in combined:
+                                selected_series.append((g_id, s))
+
+                        self.logger.debug(f"WeightYml 최종 선택된 series: {selected_series}")
+
+                        # series -> lora id 선택 및 경로 매핑
+                        mapped = {}
+                        lora_default_weight = float(self.main_config.get('LoraWeightYmlWeight', 1))
+                        for g_id, series in selected_series:
+                            s_cfg = (weight_cfg.get(g_id, {}) or {}).get('dic', {}).get(series, {}) or {}
+
+                            # 'loras' 키: 명시된 lora map에서 가중치 선택
+                            if isinstance(s_cfg.get('loras'), dict) and s_cfg.get('loras'):
+                                loras_map = s_cfg.get('loras', {})
+                                names = list(loras_map.keys())
+                                weights = []
+                                for n in names:
+                                    try:
+                                        weights.append(float(loras_map.get(n) or lora_default_weight))
+                                    except Exception:
+                                        weights.append(lora_default_weight)
                                 try:
-                                    if db is not None:
-                                        res = t_lora.search(Q.key == k)
-                                        if res:
-                                            cnt = int(res[0].get('count', 0))
+                                    sel = random.choices(names, weights=weights, k=1)[0]
                                 except Exception:
-                                    cnt = 0
+                                    sel = random.choice(names) if names else None
+                                if sel:
+                                    path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(sel)
+                                    if path:
+                                        mapped[sel] = path
+                                continue
 
-                                w = base_weight - cnt
-                                if w > max_w:
-                                    w = max_w
-                                if w < min_w:
-                                    w = min_w
-                                weights.append(max(0, int(w)))
+                            # 'ymls' 키: 해당 yml 목록에서 후보 수집 후 가중치 선택
+                            if isinstance(s_cfg.get('ymls'), (list, tuple)) and s_cfg.get('ymls'):
+                                cand = collect_loras_from_ymls(s_cfg.get('ymls'))
+                                if cand:
+                                    names = list(cand.keys())
+                                    weights = []
+                                    for n in names:
+                                        try:
+                                            weights.append(float(cand.get(n, {}).get('weight', lora_default_weight)))
+                                        except Exception:
+                                            weights.append(lora_default_weight)
+                                    try:
+                                        sel = random.choices(names, weights=weights, k=1)[0]
+                                    except Exception:
+                                        sel = random.choice(names) if names else None
+                                    if sel:
+                                        path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(sel)
+                                        if path:
+                                            mapped[sel] = path
+                                    continue
 
-                            lora_cnt = random_int_or_value(self.main_config.get('LoraDbCnt', [1, 1]))
-                            if sum(weights) <= 0:
-                                selected = random.choices(candidate_keys, k=min(lora_cnt, len(candidate_keys)))
-                            else:
-                                selected = random.choices(candidate_keys, weights=weights, k=min(lora_cnt, len(candidate_keys)))
+                            # fallback: type_data의 모든 lora 항목에서 weight 필드로 선택
+                            all_ids = {}
+                            for yname, inner in type_lora_ymls.items():
+                                if isinstance(inner, dict):
+                                    for lid, props in inner.items():
+                                        all_ids[lid] = props
+                            if all_ids:
+                                names = list(all_ids.keys())
+                                weights = []
+                                for n in names:
+                                    try:
+                                        weights.append(float(all_ids.get(n, {}).get('weight', lora_default_weight)))
+                                    except Exception:
+                                        weights.append(lora_default_weight)
+                                try:
+                                    sel = random.choices(names, weights=weights, k=1)[0]
+                                except Exception:
+                                    sel = random.choice(names) if names else None
+                                if sel:
+                                    path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(sel)
+                                    if path:
+                                        mapped[sel] = path
 
-                            mapped = {}
-                            for l in selected:
-                                path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l)
-                                mapped[l] = path
+                        if mapped:
                             self.selected_loras = mapped
-                            self.logger.info(f"✅ Lora 선택 (DB): {selected}")
-                    except Exception as e:
-                        self.logger.error(f"Lora DB 선택 오류: {e}")
-                    finally:
-                        try:
-                            if db is not None:
-                                db.close()
-                        except Exception:
-                            pass
+                            self.logger.info(f"✅ Lora 선택 (WeightYml): {list(mapped.keys())}")
+                        else:
+                            self.logger.info("WeightYml: 선택된 Lora가 없습니다.")
+                    self.logger.debug(f"WeightYml 선택된 Loras: {self.selected_loras}")
+                except Exception as e:
+                    # self.logger.error(f"WeightYml 처리 중 오류: {e}")
+                    self.logger.exception('WeightYml 처리 중 오류')
+
+            elif selected_kind.lower() == 'db':
+                # TinyDB의 lora 테이블을 사용하여 사용횟수 기반 가중치로 다중 선택
+                try:
+                    from tinydb import TinyDB, Query
+                    db_path = os.path.join(self.script_dir, 'count.db')
+                    db = TinyDB(db_path)
+                    Q = Query()
+                    t_lora = db.table('lora')
+                except Exception as e:
+                    self.logger.warning(f"DB 읽기 실패(Lora): {e}")
+                    db = None
+
+                try:
+                    lora_yml = type_data.get('lora', {})
+                    candidate_keys = []
+                    for yml_data in lora_yml.values():
+                        if isinstance(yml_data, dict):
+                            candidate_keys.extend(list(yml_data.keys()))
+
+                    etc_folder = str(self.main_config.get('LoraEtcPath', 'etc')).lower()
+                    try:
+                        valid_etc_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).keys())
+                    except Exception:
+                        valid_etc_keys = set()
+
+                    candidate_keys = [k for k in candidate_keys if k in valid_etc_keys]
+
+                    if not candidate_keys:
+                        self.logger.info("Lora DB: 후보 없음")
+                    else:
+                        base_weight = int(self.main_config.get('LoraDbWeight', self.main_config.get('LoraDbWeight', 50)))
+                        max_w = int(self.main_config.get('LoraDbWeightMax', 100))
+                        min_w = int(self.main_config.get('LoraDbWeightMin', 1))
+
+                        weights = []
+                        for k in candidate_keys:
+                            cnt = 0
+                            try:
+                                if db is not None:
+                                    res = t_lora.search(Q.key == k)
+                                    if res:
+                                        cnt = int(res[0].get('count', 0))
+                            except Exception:
+                                cnt = 0
+
+                            w = base_weight - cnt
+                            if w > max_w:
+                                w = max_w
+                            if w < min_w:
+                                w = min_w
+                            weights.append(max(0, int(w)))
+
+                        lora_cnt = random_int_or_value(self.main_config.get('LoraDbCnt', [1, 1]))
+                        if sum(weights) <= 0:
+                            selected = random.choices(candidate_keys, k=min(lora_cnt, len(candidate_keys)))
+                        else:
+                            selected = random.choices(candidate_keys, weights=weights, k=min(lora_cnt, len(candidate_keys)))
+
+                        mapped = {}
+                        for l in selected:
+                            path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l)
+                            mapped[l] = path
+                        self.selected_loras = mapped
+                        self.logger.info(f"✅ Lora 선택 (DB): {selected}")
+                except Exception as e:
+                    self.logger.error(f"Lora DB 선택 오류: {e}")
+                finally:
+                    try:
+                        if db is not None:
+                            db.close()
+                    except Exception:
+                        pass
             
             elif selected_kind.lower() == 'random':
                 lora_yml = type_data.get('lora', {})
@@ -1073,7 +1332,7 @@ class ComfyUIAutomation:
                         path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l)
                         mapped[l] = path
                     self.selected_loras = mapped
-                    self.logger.info(f"✅ Lora 선택 (Random): {selected_loras}")
+                self.logger.info(f"✅ Lora 선택 (Random): {selected_loras}")
             
             elif selected_kind.lower() == 'wildcard':
                 self.selected_loras = {}
@@ -1106,7 +1365,7 @@ class ComfyUIAutomation:
                             path = self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).get(l)
                             mapped[l] = path
                         self.selected_loras = mapped
-                        self.logger.info(f"✅ Lora 선택 (Cycle): {selected_loras}")
+                    self.logger.info(f"✅ Lora 선택 (Cycle): {selected_loras}")
                 else:
                     self.logger.info("Lora Cycle: 후보 없음")
             # self.logger.info(self.selected_loras)
