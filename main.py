@@ -1629,7 +1629,7 @@ class ComfyUIAutomation:
                     self.Queue_send()
 
                     # 실제 작업 수행 지점 (여기서 selected_type, ck_idx, ch_idx, q_idx를 사용)
-                    self.logger.info(f"실행: type={self.selected_type}, ck={ck_idx+1}/{checkpoint_loop}, ch={ch_idx+1}/{char_loop}, q={q_idx+1}/{queue_loop}")
+                    self.logger.info(f"{self.selected_type}, {ck_idx+1}/{checkpoint_loop}, {ch_idx+1}/{char_loop}, {q_idx+1}/{queue_loop}, {list(self.selected_Checkpoint.keys())} ,{list(self.selected_char.keys())} ")
 
                 if stop_batch:
                     # 배치 중단 시 다음 배치로 넘어감

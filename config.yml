@@ -20,10 +20,10 @@ url: http://127.0.0.1:8188/prompt # ComfyUI 로 보낼 url. ComfyUI가 실행중
 
 # --- 반복 설정 ---
 # CheckpointLoop * CharLoop * QueueLoop 횟수만큼 무한 반복
-CheckpointLoop: 15 # Checkpoint 반복 횟수. 한번 돌때마다 Char 값이 바뀜
+# CheckpointLoop: 15 # Checkpoint 반복 횟수. 한번 돌때마다 Char 값이 바뀜
 CheckpointLoop: [5, 5] # Checkpoint 반복 횟수. 한번 돌때마다 Char 값이 바뀜
 CharLoop: [3, 3] # Char 반복 횟수. 한번 돌때마다 Lora 값이 바뀜
-QueueLoop: 1 # Queue 반복 횟수
+# QueueLoop: 1 # Queue 반복 횟수
 QueueLoop: [3, 3] # Queue 반복 횟수
 
 # --- Checkpoint 적용 설정 ---
