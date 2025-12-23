@@ -250,10 +250,10 @@ class ComfyUIAutomation:
         파일을,
         
         path(dataPath,CheckpointTypes,'checkpoint') 경로에서
-        '*.yml'파일들을,
+        '*.yml'파일들을, 가져올때 yml 안의 키값이 CheckpointPath의 파일명(확장자제거)과 일치하는 것들만,
         
         path(dataPath,CheckpointTypes,'lora') 경로에서
-        '*.yml'파일들을,
+        '*.yml'파일들을, 가져올때 yml 안의 키값이 LoraPath의 파일명(확장자제거)과 일치하는 것들만,
 
         {
             CheckpointTypes:{ # path(dataPath,CheckpointTypes)
@@ -329,10 +329,13 @@ class ComfyUIAutomation:
                     except Exception as e:
                         self.logger.warning(f"{fname} 로드 실패 ({fpath}): {e}")
 
-            # checkpoint/*.yml files
+            # checkpoint/*.yml 파일에서 CheckpointPath의 파일명(확장자 제거)과 일치하는 키만 필터링
             checkpoint_sub = os.path.join(type_dir, 'checkpoint')
             type_data['checkpoint'] = {}
-            if os.path.isdir(checkpoint_sub):
+            if os.path.isdir(checkpoint_sub) and type_key in self.checkpoint_files:
+                # 해당 type의 checkpoint 파일명 목록
+                valid_checkpoint_keys = set(self.checkpoint_files[type_key].keys())
+                
                 for f in os.listdir(checkpoint_sub):
                     if not f.lower().endswith(('.yml', '.yaml')):
                         continue
@@ -340,14 +343,25 @@ class ComfyUIAutomation:
                     if not os.path.isfile(p):
                         continue
                     try:
-                        type_data['checkpoint'][os.path.splitext(f)[0]] = load_config(p)
+                        yml_data = load_config(p)
+                        if isinstance(yml_data, dict):
+                            # yml의 키와 checkpoint 파일 목록의 교집합만 저장
+                            filtered = {k: v for k, v in yml_data.items() if k in valid_checkpoint_keys}
+                            if filtered:
+                                type_data['checkpoint'][os.path.splitext(f)[0]] = filtered
                     except Exception as e:
                         self.logger.warning(f"Checkpoint YML 로드 실패 ({p}): {e}")
 
-            # lora/*.yml files
+            # lora/*.yml 파일에서 LoraPath의 파일명(확장자 제거)과 일치하는 키만 필터링
             lora_sub = os.path.join(type_dir, 'lora')
             type_data['lora'] = {}
-            if os.path.isdir(lora_sub):
+            if os.path.isdir(lora_sub) and type_key in self.lora_files:
+                # 해당 type의 lora 파일명 목록 (모든 서브폴더의 파일들)
+                valid_lora_keys = set()
+                for sub_folder in self.lora_files.get(type_key, {}).values():
+                    if isinstance(sub_folder, dict):
+                        valid_lora_keys.update(sub_folder.keys())
+                
                 for f in os.listdir(lora_sub):
                     if not f.lower().endswith(('.yml', '.yaml')):
                         continue
@@ -355,7 +369,12 @@ class ComfyUIAutomation:
                     if not os.path.isfile(p):
                         continue
                     try:
-                        type_data['lora'][os.path.splitext(f)[0]] = load_config(p)
+                        yml_data = load_config(p)
+                        if isinstance(yml_data, dict):
+                            # yml의 키와 lora 파일 목록의 교집합만 저장
+                            filtered = {k: v for k, v in yml_data.items() if k in valid_lora_keys}
+                            if filtered:
+                                type_data['lora'][os.path.splitext(f)[0]] = filtered
                     except Exception as e:
                         self.logger.warning(f"Lora YML 로드 실패 ({p}): {e}")
 
@@ -385,6 +404,7 @@ class ComfyUIAutomation:
             # self.logger.info(f"로드된 Lora 파일: {lora_files}")
 
             data_files = self.get_data_files()
+            
 
             while True:
                 self.get_main_config()
