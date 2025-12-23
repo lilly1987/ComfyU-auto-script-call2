@@ -86,6 +86,9 @@ class ComfyUIAutomation:
         self.selected_Checkpoint = {}
         self.selected_char = {}
         self.selected_loras = {}
+        # cycle 모드에서 사용되는 후보 풀(남은 항목)을 타입별로 관리
+        # 구조: {'checkpoint': {type_key: [remaining_keys]}, 'char': {...}, 'lora': {...}}
+        self.cycle_pool = {'checkpoint': {}, 'char': {}, 'lora': {}}
 
     def get_main_config(self):
         '''
@@ -552,6 +555,10 @@ class ComfyUIAutomation:
         가중치의 최대값은 CheckpointDbWeightMax 로 제한.
         가중치의 최소값은 CheckpointDbWeightMin 로 제한.
         
+        Cycle:
+        모든 파일을 랜덤으로 하나식 선택.
+        단 모든 파일을 한번식 사용하고 다 한번식 사용하면 다시 반복.
+
         '''
         self.logger.info(f"🔄 CheckpointLoop 시작")
         
@@ -671,6 +678,24 @@ class ComfyUIAutomation:
                             db.close()
                     except Exception:
                         pass
+            elif self.selected_kind_Checkpoint.lower() == 'cycle':
+                # 모든 후보를 랜덤 순서로 하나씩 선택, 다 사용하면 재섞음
+                checkpoint_yml = type_data.get('checkpoint', {})
+                candidate_keys = []
+                for yml_data in checkpoint_yml.values():
+                    if isinstance(yml_data, dict):
+                        candidate_keys.extend(list(yml_data.keys()))
+
+                # 중복 제거 및 정렬 불필요
+                candidate_keys = list(dict.fromkeys(candidate_keys))
+                if candidate_keys:
+                    sel = self._pop_from_cycle('checkpoint', self.selected_type.lower(), candidate_keys, k=1)
+                    if sel:
+                        selected_checkpoint = sel[0]
+                        self.selected_Checkpoint = {selected_checkpoint: selected_checkpoint}
+                        self.logger.info(f"✅ Checkpoint 선택 (Cycle): {selected_checkpoint}")
+                else:
+                    self.logger.info("Checkpoint Cycle: 후보가 없습니다")
         
         except Exception as e:
             self.logger.error(f"Checkpoint 설정 중 오류: {e}")
@@ -679,7 +704,7 @@ class ComfyUIAutomation:
     def set_char(self):
         '''
         self.main_config 의 GetCharKind 의 값을 가중치 기반으로 랜덤 선택하여 반환
-        
+        self.main_config 의 path(LoraPath,LoraCharPath) 의 파일들 중에서 선택
 
         '''
         self.logger.info(f"👤 CharLoop 시작")
@@ -706,11 +731,19 @@ class ComfyUIAutomation:
                 char_weight_per = self.main_config.get('CharWeightPer', 0.75)
                 lora_yml = type_data.get('lora', {})
                 weight_char_yml = type_data.get('WeightChar', {})
-                
+                # 실제 LoraPath의 char 서브폴더에 존재하는 모델만 후보로 삼기
+                char_folder = str(self.main_config.get('LoraCharPath', 'char')).lower()
+                try:
+                    valid_char_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(char_folder, {}).keys())
+                except Exception:
+                    valid_char_keys = set()
+
                 merged_weights = {}
                 for yml_name, yml_data in lora_yml.items():
                     if isinstance(yml_data, dict):
                         for key, val in yml_data.items():
+                            if key not in valid_char_keys:
+                                continue
                             if isinstance(val, dict):
                                 weight = val.get('weight', self.main_config.get('CharWeightDefault', 100))
                                 merged_weights[key] = merged_weights.get(key, 0) + weight
@@ -729,11 +762,20 @@ class ComfyUIAutomation:
             
             elif selected_kind.lower() == 'random':
                 lora_yml = type_data.get('lora', {})
+                # 후보는 self.data에 정의된 키와 실제 char 폴더에 존재하는 파일의 교집합
                 all_loras = []
+                char_folder = str(self.main_config.get('LoraCharPath', 'char')).lower()
+                try:
+                    valid_char_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(char_folder, {}).keys())
+                except Exception:
+                    valid_char_keys = set()
+
                 for yml_data in lora_yml.values():
                     if isinstance(yml_data, dict):
-                        all_loras.extend(yml_data.keys())
-                
+                        for k in yml_data.keys():
+                            if k in valid_char_keys:
+                                all_loras.append(k)
+
                 if all_loras:
                     selected_char = random.choice(all_loras)
                     self.selected_char = {selected_char: selected_char}
@@ -748,7 +790,31 @@ class ComfyUIAutomation:
                 self.logger.info(f"✅ Char 선택 (Skip)")
             
             elif selected_kind.lower() == 'cycle':
-                self.logger.info(f"✅ Char 선택 (cycle)")
+                # cycle 모드: char 후보 전체를 랜덤 순서로 하나씩 선택, 모두 사용하면 재섞음
+                lora_yml = type_data.get('lora', {})
+                char_folder = str(self.main_config.get('LoraCharPath', 'char')).lower()
+                try:
+                    valid_char_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(char_folder, {}).keys())
+                except Exception:
+                    valid_char_keys = set()
+
+                candidate_keys = []
+                for yml_data in lora_yml.values():
+                    if isinstance(yml_data, dict):
+                        for k in yml_data.keys():
+                            if k in valid_char_keys:
+                                candidate_keys.append(k)
+
+                # 중복 제거
+                candidate_keys = list(dict.fromkeys(candidate_keys))
+                if candidate_keys:
+                    sel = self._pop_from_cycle('char', self.selected_type.lower(), candidate_keys, k=1)
+                    if sel:
+                        selected_char = sel[0]
+                        self.selected_char = {selected_char: selected_char}
+                        self.logger.info(f"✅ Char 선택 (Cycle): {selected_char}")
+                else:
+                    self.logger.info(f"Char Cycle: 후보 없음")
 
 
         
@@ -759,7 +825,7 @@ class ComfyUIAutomation:
     def set_lora(self):
         '''
         self.main_config 의 GetLoraKind 의 값을 가중치 기반으로 랜덤 선택하여 반환
-        
+        self.main_config 의 path(LoraPath,LoraEtcPath) 의 파일들 중에서 선택
 
         '''
         self.logger.info(f"📋 QueueLoop 시작")
@@ -786,20 +852,39 @@ class ComfyUIAutomation:
                 weight_lora_yml = type_data.get('WeightLora', {})
                 
                 if weight_lora_yml:
-                    lora_names = list(weight_lora_yml.keys())
-                    lora_weights = [float(weight_lora_yml.get(k, 1.0) or 1.0) for k in lora_names]
-                    lora_cnt = random_int_or_value(self.main_config.get('LoraDbCnt', [1, 1]))
-                    selected_loras = random.choices(lora_names, weights=lora_weights, k=min(lora_cnt, len(lora_names)))
-                    self.selected_loras = {lora: lora for lora in selected_loras}
-                    self.logger.info(f"✅ Lora 선택 (Weight): {selected_loras}")
+                    # etc 서브폴더에 존재하는 모델만 후보로 필터링
+                    etc_folder = str(self.main_config.get('LoraEtcPath', 'etc')).lower()
+                    try:
+                        valid_etc_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).keys())
+                    except Exception:
+                        valid_etc_keys = set()
+
+                    lora_names = [k for k in list(weight_lora_yml.keys()) if k in valid_etc_keys]
+                    if lora_names:
+                        lora_weights = [float(weight_lora_yml.get(k, 1.0) or 1.0) for k in lora_names]
+                        lora_cnt = random_int_or_value(self.main_config.get('LoraDbCnt', [1, 1]))
+                        selected_loras = random.choices(lora_names, weights=lora_weights, k=min(lora_cnt, len(lora_names)))
+                        self.selected_loras = {lora: lora for lora in selected_loras}
+                        self.logger.info(f"✅ Lora 선택 (Weight): {selected_loras}")
+                    else:
+                        self.logger.info("Lora 선택(Weight): 후보 없음")
             
             elif selected_kind.lower() == 'random':
                 lora_yml = type_data.get('lora', {})
+                # 후보는 self.data에 정의된 키와 실제 etc 폴더에 존재하는 파일의 교집합
                 all_loras = []
+                etc_folder = str(self.main_config.get('LoraEtcPath', 'etc')).lower()
+                try:
+                    valid_etc_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).keys())
+                except Exception:
+                    valid_etc_keys = set()
+
                 for yml_data in lora_yml.values():
                     if isinstance(yml_data, dict):
-                        all_loras.extend(yml_data.keys())
-                
+                        for k in yml_data.keys():
+                            if k in valid_etc_keys:
+                                all_loras.append(k)
+
                 if all_loras:
                     lora_cnt = random_int_or_value(self.main_config.get('LoraRandomCnt', [1, 1]))
                     selected_loras = random.choices(all_loras, k=min(lora_cnt, len(all_loras)))
@@ -813,19 +898,66 @@ class ComfyUIAutomation:
             
             elif selected_kind.lower() == 'cycle':
                 lora_yml = type_data.get('lora', {})
-                all_loras = []
+                # cycle 모드: etc 후보 전체를 랜덤 순서로 k개 선택, 모두 사용하면 재섞음
+                etc_folder = str(self.main_config.get('LoraEtcPath', 'etc')).lower()
+                try:
+                    valid_etc_keys = set(self.lora_files.get(self.selected_type.lower(), {}).get(etc_folder, {}).keys())
+                except Exception:
+                    valid_etc_keys = set()
+
+                candidate_keys = []
                 for yml_data in lora_yml.values():
                     if isinstance(yml_data, dict):
-                        all_loras.extend(yml_data.keys())
-                
-                if all_loras:
+                        for k in yml_data.keys():
+                            if k in valid_etc_keys:
+                                candidate_keys.append(k)
+
+                candidate_keys = list(dict.fromkeys(candidate_keys))
+                if candidate_keys:
                     lora_cnt = random_int_or_value(self.main_config.get('LoraCycleCnt', [1, 1]))
-                    selected_loras = all_loras[:lora_cnt]
-                    self.selected_loras = {lora: lora for lora in selected_loras}
-                    self.logger.info(f"✅ Lora 선택 (Cycle): {selected_loras}")
+                    sel = self._pop_from_cycle('lora', self.selected_type.lower(), candidate_keys, k=lora_cnt)
+                    if sel:
+                        selected_loras = sel
+                        self.selected_loras = {lora: lora for lora in selected_loras}
+                        self.logger.info(f"✅ Lora 선택 (Cycle): {selected_loras}")
+                else:
+                    self.logger.info("Lora Cycle: 후보 없음")
         
         except Exception as e:
             self.logger.error(f"Lora 설정 중 오류: {e}")
+
+    def _pop_from_cycle(self, category, type_key, candidates, k=1):
+        """
+        category: 'checkpoint'|'char'|'lora'
+        type_key: lowercased type name
+        candidates: list of candidate keys
+        k: number of items to pop
+
+        반환: list of selected keys (length k or less if no candidates)
+        동작: 내부 풀에 남은 항목에서 앞에서부터 꺼내며, 풀 비어있으면 candidates를 셔플해서 채움
+        """
+        if not candidates:
+            return []
+
+        pool = self.cycle_pool.setdefault(category, {})
+        cur = pool.get(type_key, [])
+
+        # 풀 초기화(비어있으면 candidates 셔플하여 채움)
+        if not cur:
+            cur = candidates[:] 
+            random.shuffle(cur)
+
+        result = []
+        while len(result) < k:
+            if not cur:
+                cur = candidates[:]
+                random.shuffle(cur)
+            take = min(k - len(result), len(cur))
+            result.extend(cur[:take])
+            cur = cur[take:]
+
+        pool[type_key] = cur
+        return result
 
     def db_save(self):
         '''
