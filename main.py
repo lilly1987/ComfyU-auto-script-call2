@@ -170,7 +170,9 @@ class ComfyUIAutomation:
                     if found:
                         lora_files[type_key][sub_key] = found
 
-            self.logger.info(f"Lora 파일 로드 완료")
+            self.logger.info(f"Lora 파일 로드 완료 {sum(len(inner_v) 
+                     for mid_v in lora_files.values() if isinstance(mid_v, dict) 
+                     for inner_v in mid_v.values() if isinstance(inner_v, dict))}")
             self.lora_files = lora_files
             return lora_files
         except Exception as e:
@@ -228,7 +230,7 @@ class ComfyUIAutomation:
                 checkpoint_files[folder_key] = files
 
             total = sum(len(v) for v in checkpoint_files.values())
-            self.logger.info(f"Checkpoint 파일 로드 완료 - {total}개")
+            self.logger.info(f"Checkpoint 파일 로드 완료 : {total}")
             self.checkpoint_files = checkpoint_files
             return checkpoint_files
         except Exception as e:
@@ -357,11 +359,13 @@ class ComfyUIAutomation:
                     except Exception as e:
                         self.logger.warning(f"Lora YML 로드 실패 ({p}): {e}")
 
+            self.logger.info(f'lora yml 키 갯수 : {sum(len(v) for v in type_data['lora'].values() if isinstance(v, dict))}' )
             result[type_key] = type_data
 
         self.data = result
         total_named = sum(len(v.get('checkpoint', {})) + len(v.get('lora', {})) for v in result.values())
         self.logger.info(f"데이터 파일 로드 완료 - 타입 수: {len(result)}, checkpoint+lora yml 총: {total_named}")
+
         return result
 
     def run(self):
@@ -378,7 +382,9 @@ class ComfyUIAutomation:
             self.logger.info(f"로드된 Checkpoint 파일: {len(checkpoint_files)}")
             
             lora_files = self.get_loras_files()
-            self.logger.info(f"로드된 Lora 파일: {lora_files}")
+            # self.logger.info(f"로드된 Lora 파일: {lora_files}")
+
+            data_files = self.get_data_files()
 
             while True:
                 self.get_main_config()

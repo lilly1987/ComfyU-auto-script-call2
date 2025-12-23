@@ -34,6 +34,7 @@ def load_config(config_file_path):
         yaml = YAML()
         yaml.preserve_quotes = True
         yaml.default_flow_style = False
+        yaml.allow_duplicate_keys = True
         
         with open(config_path, 'r', encoding='utf-8') as f:
             config_data = yaml.load(f)
